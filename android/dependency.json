@@ -6,6 +6,7 @@
 		"android":[],
 		"api":[],
 		"app":[],
+		"barcode": [],
 		"bump":[],
 		"calendar":["android"],
 		"contacts":[],

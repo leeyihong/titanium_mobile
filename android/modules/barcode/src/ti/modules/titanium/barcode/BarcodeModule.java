@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010 by M-Way Solutions GmbH
+ * Copyright (c) 2011 by M-Way Solutions GmbH
  * 
  *      http://www.mwaysolutions.com
  * 
@@ -18,9 +18,11 @@
 
 package ti.modules.titanium.barcode;
 
+import org.appcelerator.kroll.KrollDict;
+import org.appcelerator.kroll.KrollModule;
+import org.appcelerator.kroll.annotations.Kroll;
+import org.appcelerator.titanium.ContextSpecific;
 import org.appcelerator.titanium.TiContext;
-import org.appcelerator.titanium.TiDict;
-import org.appcelerator.titanium.TiModule;
 import org.appcelerator.titanium.kroll.KrollCallback;
 import org.appcelerator.titanium.util.Log;
 import org.appcelerator.titanium.util.TiActivityResultHandler;
@@ -38,7 +40,8 @@ import android.content.Intent;
  * 
  */
 
-public class BarcodeModule extends TiModule {
+@Kroll.module @ContextSpecific
+public class BarcodeModule extends KrollModule {
 
 	private static final String LCAT = "TiBarcode";
 	private static final boolean DBG = true; // TiConfig.LOGD;
@@ -48,10 +51,11 @@ public class BarcodeModule extends TiModule {
 		super(context);
 	}
 
+	@Kroll.method
 	public void scan(final Object[] args) {
 		logDebug("scan() called");
 
-		final TiDict options = (TiDict) args[0];
+		final KrollDict options = (KrollDict) args[0];
 
 		final KrollCallback successCallback = getCallback(options, "success");
 		final KrollCallback cancelCallback = getCallback(options, "cancel");
@@ -89,15 +93,14 @@ public class BarcodeModule extends TiModule {
 						if (resultCode == Activity.RESULT_CANCELED) {
 							logDebug("scan canceled");
 							if (cancelCallback != null) {
-								cancelCallback.call(null);
+								cancelCallback.callAsync();
 							}
 						} else {
 							logDebug("scan successful");
 							String result = data
 									.getStringExtra(BarcodeActivity.EXTRA_RESULT);
 							logDebug("scan result: " + result);
-							successCallback
-									.callWithProperties(getDictForResult(result));
+							successCallback.callAsync(getDictForResult(result));
 						}
 					}
 
@@ -107,9 +110,8 @@ public class BarcodeModule extends TiModule {
 						String msg = "Problem with scanner; " + e.getMessage();
 						logError("error: " + msg);
 						if (errorCallback != null) {
-							errorCallback
-									.callWithProperties(createErrorResponse(
-											UNKNOWN_ERROR, msg));
+							errorCallback.callAsync(createErrorResponse(
+									UNKNOWN_ERROR, msg));
 						}
 					}
 				});
@@ -118,13 +120,13 @@ public class BarcodeModule extends TiModule {
 
 	}
 
-	private TiDict getDictForResult(final String result) {
-		final TiDict dict = new TiDict();
+	private KrollDict getDictForResult(final String result) {
+		final KrollDict dict = new KrollDict();
 		dict.put("barcode", result);
 		return dict;
 	}
 
-	private KrollCallback getCallback(final TiDict options, final String name) {
+	private KrollCallback getCallback(final KrollDict options, final String name) {
 		if (options.containsKey(name)) {
 			return (KrollCallback) options.get(name);
 		} else {

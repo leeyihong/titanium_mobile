@@ -31,17 +31,6 @@ ignoreDirs = ['.git','.svn','_svn', 'CVS'];
 android_avd_hw = {'hw.camera': 'yes', 'hw.gps':'yes'}
 res_skips = ['style']
 
-# Copied from frameworks/base/tools/aapt/Package.cpp
-uncompressed_types = [
-	".jpg", ".jpeg", ".png", ".gif",
-	".wav", ".mp2", ".mp3", ".ogg", ".aac",
-	".mpg", ".mpeg", ".mid", ".midi", ".smf", ".jet",
-	".rtttl", ".imy", ".xmf", ".mp4", ".m4a",
-	".m4v", ".3gp", ".3gpp", ".3g2", ".3gpp2",
-	".amr", ".awb", ".wma", ".wmv"
-]
-
-
 MIN_API_LEVEL = 4
 
 def dequote(s):
@@ -245,7 +234,7 @@ class Builder(object):
 			time.sleep(1)
 		return True
 	
-	def wait_for_device(self, type):
+	def wait_for_device(self,type):
 		print "[DEBUG] Waiting for device to be ready ..."
 		sys.stdout.flush()
 		t = time.time()
@@ -301,7 +290,6 @@ class Builder(object):
 	
 	def create_avd(self,avd_id,avd_skin):
 		name = "titanium_%s_%s" % (avd_id,avd_skin)
-		name = name.replace(' ', '_')
 		if not os.path.exists(self.home_dir):
 			os.makedirs(self.home_dir)
 		if not os.path.exists(self.sdcard):
@@ -320,7 +308,7 @@ class Builder(object):
 			inifiledata.write(inifilec)
 			# TODO - Document options
 			for hw_option in android_avd_hw.keys():
-				inifiledata.write("%s=%s\n" % (hw_option, android_avd_hw[hw_option]))
+				inifiledata.write("%s=%s" % (hw_option, android_avd_hw[hw_option]))
 			inifiledata.close()
 			
 		return name
@@ -401,7 +389,7 @@ class Builder(object):
 		sys.exit(rc)
 	
 	def check_file_exists(self, path):
-		output = self.run_adb('shell', 'ls', path)
+		output = run.run([self.sdk.get_adb(), self.device_type_arg, 'shell', 'ls', path])
 		if output != None:
 			if output.find("No such file or directory") == -1:
 				return True
@@ -424,6 +412,7 @@ class Builder(object):
 		for check in tocheck:
 			if os.path.exists(os.path.join(image_parent, check)) and os.path.exists(os.path.join(image_parent, 'res-%sdpi' % check[0])):
 				warn('You have both an android/images/%s folder and an android/images/res-%sdpi folder. Files from both of these folders will end up in res/drawable-%sdpi.  If two files are named the same, there is no guarantee which one will be copied last and therefore be the one the application uses.  You should use just one of these folders to avoid conflicts.' % (check, check[0], check[0]))
+
 
 	def copy_resource_drawables(self):
 		debug('Processing Android resource drawables')
@@ -482,7 +471,7 @@ class Builder(object):
 		
 		fileset = []
 
-		if self.force_rebuild or self.deploy_type == 'production' or self.js_changed:
+		if self.force_rebuild or self.deploy_type == 'production':
 			for root, dirs, files in os.walk(os.path.join(self.top_dir, "Resources")):
 				for f in files:
 					path = os.path.join(root, f)
@@ -508,7 +497,6 @@ class Builder(object):
 		android_resources_dir = os.path.join(resources_dir, 'android')
 		self.project_deltafy = Deltafy(resources_dir, include_callback=self.include_path)
 		self.project_deltas = self.project_deltafy.scan()
-		self.js_changed = False
 		tiapp_delta = self.project_deltafy.scan_single_file(self.project_tiappxml)
 		self.tiapp_changed = tiapp_delta is not None
 		if self.tiapp_changed or self.force_rebuild:
@@ -541,6 +529,7 @@ class Builder(object):
 					trace("COPYING FILE: %s => %s (platform-specific file was removed)" % (shared_path, dest))
 					shutil.copy(shared_path, dest)
 
+
 			if delta.get_status() != Delta.DELETED:
 				if path.startswith(android_resources_dir):
 					dest = make_relative(path, android_resources_dir, self.assets_resources_dir)
@@ -558,8 +547,6 @@ class Builder(object):
 					os.makedirs(parent)
 				trace("COPYING %s FILE: %s => %s" % (delta.get_status_str(), path, dest))
 				shutil.copy(path, dest)
-				if (path.startswith(resources_dir) or path.startswith(android_resources_dir)) and path.endswith(".js"):
-					self.js_changed = True
 				# copy to the sdcard in development mode
 				if self.sdcard_copy and self.app_installed and (self.deploy_type == 'development' or self.deploy_type == 'test'):
 					if path.startswith(android_resources_dir):
@@ -567,7 +554,8 @@ class Builder(object):
 					else:
 						relative_path = make_relative(delta.get_path(), resources_dir)
 					relative_path = relative_path.replace("\\", "/")
-					self.run_adb('push', delta.get_path(), "%s/%s" % (self.sdcard_resources, relative_path))
+					cmd = [self.sdk.get_adb(), self.device_type_arg, "push", delta.get_path(), "%s/%s" % (self.sdcard_resources, relative_path)]
+					run.run(cmd)
 		
 	def generate_android_manifest(self,compiler):
 
@@ -609,7 +597,7 @@ class Builder(object):
 			'Contacts.getAllGroups' : CONTACTS_PERMISSION,
 			'Contacts.getGroupByID' : CONTACTS_PERMISSION,
 			
-			# BARCODE
+			#	 Barcode
 			'Barcode.scan' : BARCODE_PERMISSION,
 		}
 		
@@ -630,7 +618,6 @@ class Builder(object):
 		android:name="ti.modules.titanium.facebook.FBActivity"
 		android:theme="@android:style/Theme.Translucent.NoTitleBar"
     />"""
-
 		BARCODE_ACTIVITY = """<activity
 		android:name="ti.modules.titanium.barcode.BarcodeActivity"
 		android:screenOrientation="landscape" android:configChanges="orientation|keyboardHidden"
@@ -649,9 +636,8 @@ class Builder(object):
 			'Facebook.setup' : FACEBOOK_ACTIVITY,
 			'Facebook.login' : FACEBOOK_ACTIVITY,
 			'Facebook.createLoginButton' : FACEBOOK_ACTIVITY,
-			
-			# BARCODE
-			'Barcode.scan' : BARCODE_ACTIVITY,
+			#Barcode
+			'Barcode.scan' : 'BARCODE_ACTIVITY',
 		}
 		
 		# this is a map of our APIs to ones that require Google APIs to be available on the device
@@ -724,7 +710,7 @@ class Builder(object):
 				service_name = self.app_id + '.' + service['classname']
 				service_str = '<service \n\t\t\tandroid:name="%s"' % service_name
 				for subkey in service:
-					if subkey not in ('nodes', 'service_type', 'type', 'name', 'url', 'options', 'classname', 'android:name'):
+					if subkey not in ('nodes', 'type', 'name', 'url', 'options', 'classname', 'android:name'):
 						service_str += '\n\t\t\t%s="%s"' % (subkey, service[subkey])
 
 				if 'nodes' in service:
@@ -847,7 +833,7 @@ class Builder(object):
 		
 		# add manifest / application entries from modules
 		detector = ModuleDetector(self.top_dir)
-		self.missing_modules, self.modules = detector.find_app_modules(self.tiapp, 'android')
+		self.missing_modules, self.modules = detector.find_app_modules(self.tiapp)
 		for module in self.modules:
 			if module.xml == None: continue
 			manifest_xml += get_manifest_xml(module.xml)
@@ -890,30 +876,30 @@ class Builder(object):
 					uses_sdk_node = node
 				elif node.nodeName == 'supports-screens':
 					supports_screens_node = node
-		if supports_screens_node or uses_sdk_node or ('manifest-attributes' in self.tiapp.android_manifest and self.tiapp.android_manifest['manifest-attributes'].length) or ('application-attributes' in self.tiapp.android_manifest and self.tiapp.android_manifest['application-attributes'].length):
-			dom = parseString(default_manifest_contents)
-			def replace_node(olddom, newnode):
-				nodes = olddom.getElementsByTagName(newnode.nodeName)
-				if nodes:
-					olddom.documentElement.replaceChild(newnode, nodes[0])
+			if supports_screens_node or uses_sdk_node or ('manifest-attributes' in self.tiapp.android_manifest and self.tiapp.android_manifest['manifest-attributes'].length) or ('application-attributes' in self.tiapp.android_manifest and self.tiapp.android_manifest['application-attributes'].length):
+				dom = parseString(default_manifest_contents)
+				def replace_node(olddom, newnode):
+					nodes = olddom.getElementsByTagName(newnode.nodeName)
+					if nodes:
+						olddom.documentElement.replaceChild(newnode, nodes[0])
 
-			if supports_screens_node:
-				replace_node(dom, supports_screens_node)
-			if uses_sdk_node:
-				replace_node(dom, uses_sdk_node)
+				if supports_screens_node:
+					replace_node(dom, supports_screens_node)
+				if uses_sdk_node:
+					replace_node(dom, uses_sdk_node)
 
-			def set_attrs(element, new_attr_set):
-				for k in new_attr_set.keys():
-					if element.hasAttribute(k):
-						element.removeAttribute(k)
-					element.setAttribute(k, new_attr_set.get(k).value)
+				def set_attrs(element, new_attr_set):
+					for k in new_attr_set.keys():
+						if element.hasAttribute(k):
+							element.removeAttribute(k)
+						element.setAttribute(k, new_attr_set.get(k).value)
 
-			if 'manifest-attributes' in self.tiapp.android_manifest and self.tiapp.android_manifest['manifest-attributes'].length:
-				set_attrs(dom.documentElement, self.tiapp.android_manifest['manifest-attributes'])
-			if 'application-attributes' in self.tiapp.android_manifest and self.tiapp.android_manifest['application-attributes'].length:
-				set_attrs(dom.getElementsByTagName('application')[0], self.tiapp.android_manifest['application-attributes'])
+				if 'manifest-attributes' in self.tiapp.android_manifest and self.tiapp.android_manifest['manifest-attributes'].length:
+					set_attrs(dom.documentElement, self.tiapp.android_manifest['manifest-attributes'])
+				if 'application-attributes' in self.tiapp.android_manifest and self.tiapp.android_manifest['application-attributes'].length:
+					set_attrs(dom.getElementsByTagName('application')[0], self.tiapp.android_manifest['application-attributes'])
 
-			default_manifest_contents = dom.toxml()
+				default_manifest_contents = dom.toxml()
 
 		if custom_manifest_contents:
 			custom_manifest_contents = fill_manifest(custom_manifest_contents)
@@ -970,42 +956,6 @@ class Builder(object):
 	def generate_localizations(self):
 		# compile localization files
 		localecompiler.LocaleCompiler(self.name,self.top_dir,'android',sys.argv[1]).compile()
-		# fix un-escaped single-quotes and full-quotes
-		offending_pattern = '[^\\\\][\'"]'
-		for root, dirs, files in os.walk(self.res_dir):
-			for f in files:
-				if not f.endswith('.xml'):
-					continue
-				full_path = os.path.join(root, f)
-				f = codecs.open(full_path, 'r', 'utf-8')
-				contents = f.read()
-				f.close()
-				if not re.search(r"<string ", contents):
-					continue
-				doc = parseString(contents.encode("utf-8"))
-				string_nodes = doc.getElementsByTagName('string')
-				if len(string_nodes) == 0:
-					continue
-				made_change = False
-				for string_node in string_nodes:
-					if not string_node.hasChildNodes():
-						continue
-					string_child = string_node.firstChild
-					if string_child.nodeType == string_child.CDATA_SECTION_NODE or string_child.nodeType == string_child.TEXT_NODE:
-						string_value = string_child.nodeValue
-						if not re.search(offending_pattern, string_value):
-							continue
-						offenders = re.findall(offending_pattern, string_value)
-						if offenders:
-							for offender in offenders:
-								string_value = string_value.replace(offender, offender[0] + "\\" + offender[-1:])
-								made_change = True
-						string_child.nodeValue = string_value
-				if made_change:
-					new_contents = doc.toxml()
-					f = codecs.open(full_path, 'w', 'utf-8')
-					f.write(new_contents)
-					f.close()
 
 	def recurse(self, paths, file_glob=None):
 		if paths == None: yield None
@@ -1058,34 +1008,23 @@ class Builder(object):
 		javac_command.append('@' + src_list_filename)
 		out = run.run(javac_command)
 		os.remove(src_list_filename)
-
+	
 	def create_unsigned_apk(self, resources_zip_file):
 		unsigned_apk = os.path.join(self.project_dir, 'bin', 'app-unsigned.apk')
 		debug("creating unsigned apk: " + unsigned_apk)
 		# copy existing resources into the APK
 		resources_zip = zipfile.ZipFile(resources_zip_file)
-		apk_zip = zipfile.ZipFile(unsigned_apk, 'w', zipfile.ZIP_DEFLATED)
+		apk_zip = zipfile.ZipFile(unsigned_apk, 'w')
 
 		def skip_jar_path(path):
 			return path.endswith('/') or \
 				path.startswith('META-INF/') or \
 				path.split('/')[-1].startswith('.')
-		
-		def compression_type(path):
-			ext = os.path.splitext(path)[1]
-			if ext in uncompressed_types:
-				return zipfile.ZIP_STORED
-			return zipfile.ZIP_DEFLATED
-
-		def zipinfo(path):
-			info = zipfile.ZipInfo(path)
-			info.compress_type = compression_type(path)
-			return info
-
+			
 		for path in resources_zip.namelist():
 			if skip_jar_path(path): continue
 			debug("from resource zip => " + path)
-			apk_zip.writestr(zipinfo(path), resources_zip.read(path))
+			apk_zip.writestr(path, resources_zip.read(path))
 		resources_zip.close()
 		
 		# add classes.dex
@@ -1097,7 +1036,7 @@ class Builder(object):
 				if os.path.splitext(file)[1] != '.java':
 					relative_path = os.path.join(root[len(self.project_src_dir)+1:], file)
 					debug("resource file => " + relative_path)
-					apk_zip.write(os.path.join(root, file), relative_path, compression_type(file))
+					apk_zip.write(os.path.join(root, file), relative_path)
 		
 		def add_resource_jar(jar_file):
 			jar = zipfile.ZipFile(jar_file)
@@ -1105,44 +1044,22 @@ class Builder(object):
 				if skip_jar_path(path): continue
 				if os.path.splitext(path)[1] != '.class':
 					debug("from JAR %s => %s" % (jar_file, path))
-					apk_zip.writestr(zipinfo(path), jar.read(path))
+					apk_zip.writestr(path, jar.read(path))
 			jar.close()
 		
 		for jar_file in self.module_jars:
 			add_resource_jar(jar_file)
 		for jar_file in self.android_jars:
 			add_resource_jar(jar_file)
-
-		def add_native_libs(libs_dir):
-			if os.path.exists(libs_dir):
-				for abi_dir in os.listdir(libs_dir):
-					libs_abi_dir = os.path.join(libs_dir, abi_dir)
-					if not os.path.isdir(libs_abi_dir): continue
-					for file in os.listdir(libs_abi_dir):
-						if file.endswith('.so'):
-							apk_zip.write(os.path.join(libs_abi_dir, file), '/'.join(['lib', abi_dir, file]))
-
-		# add any native libraries : libs/**/*.so -> lib/**/*.so
-		add_native_libs(os.path.join(self.project_dir, 'libs'))
-
-		# add module native libraries
-		for module in self.modules:
-			add_native_libs(module.get_resource('libs'))
-
+		
 		apk_zip.close()
 		return unsigned_apk
-
-	def run_adb(self, *args):
-		command = [self.sdk.get_adb()]
-		command.extend(self.device_args)
-		command.extend(args)
-		return run.run(command)
 
 	def package_and_deploy(self):
 		ap_ = os.path.join(self.project_dir, 'bin', 'app.ap_')
 		rhino_jar = os.path.join(self.support_dir, 'js.jar')
-		run.run([self.aapt, 'package', '-f', '-M', 'AndroidManifest.xml', '-A', self.assets_dir,
-			'-S', 'res', '-I', self.android_jar, '-I', self.titanium_jar, '-F', ap_], warning_regex=r'skipping')
+		run.run([self.aapt, 'package', '-f', '-M', 'AndroidManifest.xml', '-A', self.assets_dir, '-S', 'res', '-I', self.android_jar, '-I', self.titanium_jar, '-F', ap_],
+			warning_regex=r'skipping')
 	
 		unsigned_apk = self.create_unsigned_apk(ap_)
 		#unsigned_apk = os.path.join(self.project_dir, 'bin', 'app-unsigned.apk')
@@ -1166,8 +1083,6 @@ class Builder(object):
 
 		output = run.run([self.jarsigner, '-storepass', self.keystore_pass, '-keystore', self.keystore, '-signedjar', app_apk, unsigned_apk, self.keystore_alias])
 		run.check_output_for_error(output, r'RuntimeException: (.*)', True)
-		run.check_output_for_error(output, r'^jarsigner: (.*)', True)
-
 		# TODO Document Exit message
 		#success = re.findall(r'RuntimeException: (.*)', output)
 		#if len(success) > 0:
@@ -1194,8 +1109,7 @@ class Builder(object):
 		if self.build_only:
 			return (False, False)
 
-		out = self.run_adb('get-state')
-		#out = subprocess.Popen([self.sdk.get_adb(), self.device_type_arg, 'get-state'], stderr=subprocess.PIPE, stdout=subprocess.PIPE).communicate()[0]
+		out = subprocess.Popen([self.sdk.get_adb(), self.device_type_arg, 'get-state'], stderr=subprocess.PIPE, stdout=subprocess.PIPE).communicate()[0]
 		out = str(out).strip()
 		
 		# try a few times as sometimes it fails waiting on boot
@@ -1204,15 +1118,17 @@ class Builder(object):
 		launch_failed = False
 		while attempts < 5:
 			try:
+				cmd = [self.sdk.get_adb()]
 				if self.install:
 					self.wait_for_device('d')
 					info("Installing application on emulator")
+					cmd += ['-d']
 				else:
 					self.wait_for_device('e')
 					info("Installing application on device")
-
-				output = self.run_adb('install', '-r', app_apk)
-				#output = run.run(cmd)
+					cmd += ['-e']
+				cmd += ['install', '-r', app_apk]
+				output = run.run(cmd)
 				if output == None:
 					launch_failed = True
 				elif "Failure" in output:
@@ -1227,28 +1143,25 @@ class Builder(object):
 				attempts+=1
 			
 		return (launched, launch_failed)
-
+	
 	def run_app(self):
 		info("Launching application ... %s" % self.name)
-		output = self.run_adb('shell', 'am', 'start',
+		output = run.run([
+			self.sdk.get_adb(), self.device_type_arg, 'shell', 'am', 'start',
 			'-a', 'android.intent.action.MAIN',
 			'-c','android.intent.category.LAUNCHER',
-			'-n', '%s/.%sActivity' % (self.app_id , self.classname))
+			'-n', '%s/.%sActivity' % (self.app_id , self.classname)])
+		
 		trace("Launch output: %s" % output)
-
-	def build_and_run(self, install, avd_id, keystore=None, keystore_pass='tirocks', keystore_alias='tidev', dist_dir=None, build_only=False, device_args=None):
+		
+	def build_and_run(self, install, avd_id, keystore=None, keystore_pass='tirocks', keystore_alias='tidev', dist_dir=None, build_only=False):
 		deploy_type = 'development'
 		self.build_only = build_only
-		self.device_args = device_args
 		if install:
-			if self.device_args == None:
-				self.device_args = ['-d']
 			if keystore == None:
 				deploy_type = 'test'
 			else:
 				deploy_type = 'production'
-		if self.device_args == None:
-			self.device_args = ['-e']
 
 		self.deploy_type = deploy_type
 		(java_failed, java_status) = prereq.check_java()
@@ -1330,8 +1243,13 @@ class Builder(object):
 				self.wait_for_device('e')
 			elif deploy_type == 'test':
 				self.wait_for_device('d')
-
+		
 		self.install = install
+		
+		self.device_type_arg = '-e'
+		if self.deploy_type == 'test':
+			self.device_type_arg = '-d'
+			
 		self.dist_dir = dist_dir
 		self.aapt = self.sdk.get_aapt()
 		self.android_jar = self.sdk.get_android_jar()
@@ -1388,7 +1306,7 @@ class Builder(object):
 
 			self.copy_project_resources()
 			
-			if self.tiapp_changed or self.js_changed or self.force_rebuild or self.deploy_type == "production":
+			if self.tiapp_changed or self.force_rebuild or self.deploy_type == "production":
 				trace("Generating Java Classes")
 				self.android.create(os.path.abspath(os.path.join(self.top_dir,'..')), True, project_dir=self.top_dir)
 			else:
@@ -1503,7 +1421,7 @@ class Builder(object):
 				info("Compiling Android Resources... This could take some time")
 				sys.stdout.flush()
 				# TODO - Document Exit message
-				run_result = run.run(dex_args, warning_regex=r'warning: ')
+				run_result = run.run(dex_args)
 				if (run_result == None):
 					dex_built = False
 					error("System Error while compiling Android classes.dex")
@@ -1519,12 +1437,14 @@ class Builder(object):
 					else: self.wait_for_device('d')
 				
 					trace("Performing full copy to SDCARD -> %s" % self.sdcard_resources)
-					output = self.run_adb('push', os.path.join(self.top_dir, 'Resources'), self.sdcard_resources)
+					cmd = [self.sdk.get_adb(), self.device_type_arg, "push", os.path.join(self.top_dir, 'Resources'), self.sdcard_resources]
+					output = run.run(cmd)
 					trace("result: %s" % output)
 			
 					android_resources_dir = os.path.join(self.top_dir, 'Resources', 'android')
 					if os.path.exists(android_resources_dir):
-						output = self.run_adb('push', android_resources_dir, self.sdcard_resources)
+						cmd = [self.sdk.get_adb(), self.device_type_arg, "push", android_resources_dir, self.sdcard_resources]
+						output = run.run(cmd)
 						trace("result: %s" % output)
 						
 			if dex_built or generated_classes_built or self.tiapp_changed or manifest_changed or not self.app_installed or not self.sdcard_copy:
@@ -1542,7 +1462,7 @@ class Builder(object):
 				info("Re-launching application ... %s" % self.name)
 				
 				relaunched = False
-				processes = self.run_adb('shell', 'ps')
+				processes = run.run([self.sdk.get_adb(), self.device_type_arg, 'shell', 'ps'])
 				for line in processes.splitlines():
 					columns = line.split()
 					if len(columns) > 1:
@@ -1550,9 +1470,9 @@ class Builder(object):
 						id = columns[len(columns)-1]
 						
 						if id == self.app_id:
-							self.run_adb('shell', 'kill', pid)
+							run.run([self.sdk.get_adb(), self.device_type_arg, 'shell', 'kill', pid])
 							relaunched = True
-
+				
 				self.run_app()
 				if relaunched:
 					info("Relaunched %s ... Application should be running." % self.name)
@@ -1632,36 +1552,33 @@ if __name__ == "__main__":
 		elif command == 'emulator':
 			avd_id = dequote(sys.argv[6])
 			avd_skin = dequote(sys.argv[7])
-			s.run_emulator(avd_id, avd_skin)
+			s.run_emulator(avd_id,avd_skin)
 		elif command == 'simulator':
 			info("Building %s for Android ... one moment" % project_name)
 			avd_id = dequote(sys.argv[6])
-			s.build_and_run(False, avd_id)
+			s.build_and_run(False,avd_id)
 		elif command == 'install':
 			avd_id = dequote(sys.argv[6])
-			device_args = ['-d']
-			if len(sys.argv) >= 8:
-				device_args = ['-s', sys.argv[7]]
-			s.build_and_run(True, avd_id, device_args=device_args)
+			s.build_and_run(True,avd_id)
 		elif command == 'distribute':
 			key = os.path.abspath(os.path.expanduser(dequote(sys.argv[6])))
 			password = dequote(sys.argv[7])
 			alias = dequote(sys.argv[8])
 			output_dir = dequote(sys.argv[9])
 			avd_id = dequote(sys.argv[10])
-			s.build_and_run(True, avd_id, key, password, alias, output_dir)
+			s.build_and_run(True,avd_id,key,password,alias,output_dir)
 		elif command == 'build':
 			s.build_and_run(False, 1, build_only=True)
 		else:
 			error("Unknown command: %s" % command)
 			usage()
-	except SystemExit, n:
-		sys.exit(n)
+	except SystemExit:
+		pass
 	except:
+		exctype, excvalue = sys.exc_info()[:2]
 		e = traceback.format_exc()
-		error("Exception occured while building Android project:")
-		for line in e.splitlines():
-			error(line)
+		e = e.replace('\n','\t')
+		print "[ERROR] Error in compiler. %s, %s; %s" % (exctype, excvalue, e)
 		sys.exit(1)
 		
 	sys.exit(0)

@@ -1,5 +1,8 @@
 /**
- * 
+ * Appcelerator Titanium Mobile
+ * Copyright (c) 2009-2010 by Appcelerator, Inc. All Rights Reserved.
+ * Licensed under the terms of the Apache Public License
+ * Please see the LICENSE included with this distribution for details.
  */
 package org.appcelerator.titanium.proxy;
 
@@ -10,6 +13,8 @@ import org.appcelerator.titanium.util.Log;
 import org.appcelerator.titanium.util.TiConfig;
 import org.appcelerator.titanium.view.TiUIActivityWindow;
 import org.appcelerator.titanium.view.TiUIView;
+
+import android.app.Activity;
 
 import ti.modules.titanium.android.AndroidModule;
 
@@ -49,5 +54,11 @@ public class TiActivityWindowProxy extends TiWindowProxy
 
 	@Override
 	protected void handleOpen(KrollDict options) {
+	}
+	
+	@Override
+	protected Activity handleGetActivity() {
+		if (view == null) return null;
+		return ((TiUIActivityWindow)view).getActivity();
 	}
 }

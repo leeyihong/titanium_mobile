@@ -7,10 +7,12 @@
 package ti.modules.titanium.ui.widget;
 
 import org.appcelerator.kroll.KrollDict;
+import org.appcelerator.titanium.TiC;
 import org.appcelerator.titanium.proxy.TiViewProxy;
 import org.appcelerator.titanium.util.Log;
 import org.appcelerator.titanium.util.TiConvert;
 import org.appcelerator.titanium.view.TiCompositeLayout;
+import org.appcelerator.titanium.view.TiCompositeLayout.LayoutArrangement;
 import org.appcelerator.titanium.view.TiUIView;
 
 import android.content.Context;
@@ -36,8 +38,8 @@ public class TiUIScrollView extends TiUIView {
 		private static final int AUTO = Integer.MAX_VALUE;
 		protected int measuredWidth = 0, measuredHeight = 0;
 
-		public TiScrollViewLayout(Context context, boolean vertical) {
-			super(context, vertical);
+		public TiScrollViewLayout(Context context, LayoutArrangement arrangement) {
+			super(context, arrangement);
 		}
 
 		private LayoutParams getParams(View child) {
@@ -60,7 +62,7 @@ public class TiUIScrollView extends TiUIView {
 		private int getContentProperty(String property) {
 			Object value = getProxy().getProperty(property);
 			if (value != null) {
-				if (value.equals("auto")) {
+				if (value.equals(TiC.SIZE_AUTO)) {
 					return AUTO;
 				} else if (value instanceof Number) {
 					return ((Number)value).intValue();
@@ -75,14 +77,14 @@ public class TiUIScrollView extends TiUIView {
 			int contentWidth = getContentProperty("contentWidth");
 			if (contentWidth == AUTO) {
 				int childMeasuredWidth = child.getMeasuredWidth();
-				if (!p.autoHeight) {
-					childMeasuredWidth = p.optionWidth;
+				if (!p.autoWidth) {
+					childMeasuredWidth = p.optionWidth.getAsPixels(this);
 				}
-				if (p.optionLeft != NOT_SET) {
-					childMeasuredWidth += p.optionLeft;
+				if (p.optionLeft != null) {
+					childMeasuredWidth += p.optionLeft.getAsPixels(this);
 				}
-				if (p.optionRight != NOT_SET) {
-					childMeasuredWidth += p.optionRight;
+				if (p.optionRight != null) {
+					childMeasuredWidth += p.optionRight.getAsPixels(this);
 				}
 
 				measuredWidth = Math.max(childMeasuredWidth, measuredWidth);
@@ -101,13 +103,13 @@ public class TiUIScrollView extends TiUIView {
 			if (contentHeight == AUTO) {
 				int childMeasuredHeight = child.getMeasuredHeight();
 				if (!p.autoHeight) {
-					childMeasuredHeight = p.optionHeight;
+					childMeasuredHeight = p.optionHeight.getAsPixels(this);
 				}
-				if (p.optionTop != NOT_SET) {
-					childMeasuredHeight += p.optionTop;
+				if (p.optionTop != null) {
+					childMeasuredHeight += p.optionTop.getAsPixels(this);
 				}
-				if (p.optionBottom != NOT_SET) {
-					childMeasuredHeight += p.optionBottom;
+				if (p.optionBottom != null) {
+					childMeasuredHeight += p.optionBottom.getAsPixels(this);
 				}
 
 				measuredHeight = Math.max(childMeasuredHeight, measuredHeight);
@@ -171,14 +173,14 @@ public class TiUIScrollView extends TiUIView {
 	{
 		private TiScrollViewLayout layout;
 
-		public TiVerticalScrollView(Context context, boolean vertical)
+		public TiVerticalScrollView(Context context, LayoutArrangement arrangement)
 		{
 			super(context);
 			setScrollBarStyle(SCROLLBARS_INSIDE_OVERLAY);
 			//setFillViewport(true);
 			//setScrollContainer(true);
 
-			layout = new TiScrollViewLayout(context, vertical);
+			layout = new TiScrollViewLayout(context, arrangement);
 			FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
 				ViewGroup.LayoutParams.FILL_PARENT,
 				ViewGroup.LayoutParams.FILL_PARENT);
@@ -207,14 +209,14 @@ public class TiUIScrollView extends TiUIView {
 	{
 		private TiScrollViewLayout layout;
 
-		public TiHorizontalScrollView(Context context, boolean vertical)
+		public TiHorizontalScrollView(Context context, LayoutArrangement arrangement)
 		{
 			super(context);
 			setScrollBarStyle(SCROLLBARS_INSIDE_OVERLAY);
 			setFillViewport(true);
 			setScrollContainer(true);
 
-			layout = new TiScrollViewLayout(context, vertical);
+			layout = new TiScrollViewLayout(context, arrangement);
 			FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
 				ViewGroup.LayoutParams.FILL_PARENT,
 				ViewGroup.LayoutParams.FILL_PARENT);
@@ -295,15 +297,21 @@ public class TiUIScrollView extends TiUIView {
 		
 		// we create the view here since we now know the potential widget type
 		View view = null;
+		LayoutArrangement arrangement = LayoutArrangement.DEFAULT;
+		if (d.containsKey(TiC.PROPERTY_LAYOUT) && d.getString(TiC.PROPERTY_LAYOUT).equals(TiC.LAYOUT_VERTICAL)) {
+			arrangement = LayoutArrangement.VERTICAL;
+		} else if (d.containsKey(TiC.PROPERTY_LAYOUT) && d.getString(TiC.PROPERTY_LAYOUT).equals(TiC.LAYOUT_HORIZONTAL)) {
+			arrangement = LayoutArrangement.HORIZONTAL;
+		}
 		switch (type) {
 			case TYPE_HORIZONTAL:
 				Log.d(LCAT, "creating horizontal scroll view");
-				view = new TiHorizontalScrollView(getProxy().getContext(), d.containsKey("layout") && d.getString("layout").equals("vertical"));
+				view = new TiHorizontalScrollView(getProxy().getContext(), arrangement);
 				break;
 			case TYPE_VERTICAL:
 			default:
 				Log.d(LCAT, "creating vertical scroll view");
-				view = new TiVerticalScrollView(getProxy().getContext(), d.containsKey("layout") && d.getString("layout").equals("vertical"));
+				view = new TiVerticalScrollView(getProxy().getContext(), arrangement);
 		}
 		setNativeView(view);
 

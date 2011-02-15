@@ -22,9 +22,9 @@ public final class ${config['classname']}Application extends TiApplication {
 		super.onCreate();
 		
 		appInfo = new ${config['classname']}AppInfo(this);
+		postAppInfo();
 		stylesheet = new ApplicationStylesheet();
-		
-		onAfterCreate();
+		postOnCreate();
 	}
 	
 	@Override
@@ -32,18 +32,31 @@ public final class ${config['classname']}Application extends TiApplication {
 		%for module in app_modules:
 		// ${module['api_name']} module
 		modules.add(new ${module['class_name']}(context));
+		%for child_module in module['external_child_modules']:
+		// ${module['api_name']}.${child_module['name']}
+		KrollModule.addExternalChildModule(${module['class_name']}.class, ${child_module['proxyClassName']}.class);
+		%endfor
 		%endfor
 		
 		%if len(custom_modules) > 0:
 		// Custom modules
+		KrollModuleInfo moduleInfo;
 		%endif
 		%for module in custom_modules:
 		<% manifest = module['manifest'] %>
-		KrollModule.addModuleInfo(new KrollModuleInfo(
+		moduleInfo = new KrollModuleInfo(
 			"${manifest.name}", "${manifest.moduleid}", "${manifest.guid}", "${manifest.version}",
-			"${manifest.description}", "${manifest.author}", "${manifest.license}", "${manifest.copyright}"
-		));
+			"${manifest.description}", "${manifest.author}", "${manifest.license}",
+			"${manifest.copyright}");
+		%if manifest.has_property("licensekey"):
+		moduleInfo.setLicenseKey("${manifest.licensekey}");
+		%endif
+		KrollModule.addModuleInfo(moduleInfo);
 		%endfor
+		%if config['deploy_type'] != 'production':
+		org.appcelerator.titanium.TiVerify verify = new org.appcelerator.titanium.TiVerify(context.getActivity(), this);
+		verify.verify();
+		%endif
 	}
 	
 	%if len(custom_modules) > 0:

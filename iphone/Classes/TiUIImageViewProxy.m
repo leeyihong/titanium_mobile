@@ -33,7 +33,15 @@ static NSArray* imageKeySequence;
 // resized/relayed on iPad.  See #2227
 -(UIViewAutoresizing)verifyAutoresizing:(UIViewAutoresizing)suggestedResizing
 {
-	return (suggestedResizing | UIViewAutoresizingFlexibleHeight | UIViewAutoresizingFlexibleWidth);
+	UIViewAutoresizing resizing = suggestedResizing;
+	if (TiDimensionIsAuto(layoutProperties.width)) {
+		resizing |= UIViewAutoresizingFlexibleWidth;
+	}
+	if (TiDimensionIsAuto(layoutProperties.height)) {
+		resizing |= UIViewAutoresizingFlexibleHeight;
+	}
+	
+	return resizing;
 }
 
 -(void)_configure
@@ -157,7 +165,12 @@ USE_VIEW_FOR_AUTO_HEIGHT
 -(void)startImageLoad:(NSURL *)url;
 {
 	[self cancelPendingImageLoads]; //Just in case we have a crusty old urlRequest.
-	urlRequest = [[[ImageLoader sharedLoader] loadImage:url delegate:self userInfo:nil] retain];
+	NSDictionary* info = nil;
+	NSNumber* hires = [self valueForKey:@"hires"];
+	if (hires) {
+		info = [NSDictionary dictionaryWithObject:hires forKey:@"hires"];
+	}
+	urlRequest = [[[ImageLoader sharedLoader] loadImage:url delegate:self userInfo:info] retain];
 }
 
 -(void)cancelPendingImageLoads

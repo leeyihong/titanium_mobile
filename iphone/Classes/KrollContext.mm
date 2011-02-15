@@ -410,15 +410,47 @@ static TiValueRef StringFormatDecimalCallback (TiContextRef jsContext, TiObjectR
 	@try 
 	{
 		NSString* result;
-		if ([TiUtils isIOS4OrGreater]) {
-			result = [NSNumberFormatter localizedStringFromNumber:number numberStyle:NSNumberFormatterDecimalStyle];
+		NSLocale* locale = nil;
+		NSString* formatString = nil;
+		if (argCount > 1) 
+		{
+			NSString* arg = [KrollObject toID:ctx value:args[1]];
+			if ([arg rangeOfCharacterFromSet:[NSCharacterSet characterSetWithCharactersInString:@"0#.,"]].location != NSNotFound) {
+				formatString = arg;
+			}
+			else {
+				locale = [[[NSLocale alloc] initWithLocaleIdentifier:arg] autorelease];
+			}
 		}
-		else {
-			NSNumberFormatter* formatter = [[[NSNumberFormatter alloc] init] autorelease];
-			NSLocale* locale = [NSLocale currentLocale];
-			[formatter setNumberStyle:NSNumberFormatterDecimalStyle];
-			result = [formatter stringFromNumber:number];			
+		// If locale is nil, either: Single argument, or the second arg is format string and not locale ID.
+		if (locale == nil) {
+			locale = [NSLocale currentLocale];
 		}
+		
+		NSNumberFormatter* formatter = [[[NSNumberFormatter alloc] init] autorelease];
+		
+		[formatter setLocale:locale];
+		[formatter setNumberStyle:NSNumberFormatterDecimalStyle];
+
+		// Format handling to match the extremely vague android specs
+		if (argCount == 3)
+		{
+			formatString = [KrollObject toID:ctx value:args[2]];
+		}
+		
+		if (formatString != nil) {
+			NSArray* formats = [formatString componentsSeparatedByString:@";"];
+			[formatter setPositiveFormat:[formats objectAtIndex:0]];
+			if ([formats count] > 1) {
+				[formatter setNegativeFormat:[formats objectAtIndex:1]];
+			}
+			else {
+				[formatter setNegativeFormat:[formats objectAtIndex:0]];
+			}
+		}
+		
+		result = [formatter stringFromNumber:number];			
+
 		TiValueRef value = [KrollObject toValue:ctx value:result];
 		return value;
 	}
@@ -678,14 +710,18 @@ static TiValueRef StringFormatDecimalCallback (TiContextRef jsContext, TiObjectR
 - (void)suspend:(id)note
 {
 	[condition lock];
+	VerboseLog(@"Will suspend %@ %@",self,CODELOCATION);
 	suspended = YES;
+	VerboseLog(@"Did suspend %@ %@",self,CODELOCATION);
 	[condition unlock];
 }
 
 - (void)resume:(id)note
 {
 	[condition lock];
+	VerboseLog(@"Will resume-signalling %@ %@",self,CODELOCATION);
 	suspended = NO;
+	VerboseLog(@"Did resume; signalling %@ %@",self,CODELOCATION);
 	[condition signal];
 	[condition unlock];
 }
@@ -934,18 +970,20 @@ static TiValueRef StringFormatDecimalCallback (TiContextRef jsContext, TiObjectR
 	
 	while(1)
 	{
-		if (pool == nil) {
-			pool = [[NSAutoreleasePool alloc] init];
-		}
+		NSAutoreleasePool *innerpool = [[NSAutoreleasePool alloc] init];
 		loopCount++;
 		
 		// if we're suspended, we simply wait for resume
 		if (suspended)
 		{
 			[condition lock];
-			if (suspended)
+			//TODO: Suspended currently only is set on app pause/resume. We should have it happen whenever a JS thread
+			//should be paused. Paused being no timers waiting, no events being triggered, no code to execute.
+			if (suspended && ([queue count] == 0))
 			{
+				VerboseLog(@"Waiting: %@",self);
 				[condition wait];
+				VerboseLog(@"Resumed! %@",self)
 			} 
 			[condition unlock];
 		}
@@ -1037,9 +1075,7 @@ static TiValueRef StringFormatDecimalCallback (TiContextRef jsContext, TiObjectR
 				}				
 			}
 		}
-		RELEASE_TO_NIL(pool); // Clean up all of our autorelease so that long-running contexts don't devour everything
 
-		
 		// TODO: experiment, attempt to collect more often than usual given our environment
 		if (loopCount == GC_LOOP_COUNT)
 		{
@@ -1054,6 +1090,7 @@ static TiValueRef StringFormatDecimalCallback (TiContextRef jsContext, TiObjectR
 		// we can now immediately exit
 		if (exit_after_flush)
 		{
+			RELEASE_TO_NIL(innerpool);
 			break;
 		}
 		
@@ -1070,14 +1107,15 @@ static TiValueRef StringFormatDecimalCallback (TiContextRef jsContext, TiObjectR
 		{
 			// wait only 10 seconds and then loop, this will allow us to garbage
 			// collect every so often
-			//[condition waitUntilDate:[NSDate dateWithTimeIntervalSinceNow:60]];		
-			[condition wait];
+			[condition waitUntilDate:[NSDate dateWithTimeIntervalSinceNow:10]];		
 		}
 		[condition unlock]; 
 		
 #if CONTEXT_DEBUG == 1	
 		NSLog(@"CONTEXT<%@>: woke up for new event (count=%d)",self,KrollContextCount);
 #endif
+		
+		RELEASE_TO_NIL(innerpool);
 	}
 
 #if CONTEXT_DEBUG == 1	

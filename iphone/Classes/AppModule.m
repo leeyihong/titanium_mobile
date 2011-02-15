@@ -11,6 +11,9 @@
 #import "SBJSON.h"
 #import "ListenerEntry.h"
 #import "TiApp.h"
+#if defined(USE_TI_APPIOS) && __IPHONE_OS_VERSION_MAX_ALLOWED >= __IPHONE_4_0
+#import "TiAppiOSProxy.h"
+#endif
 
 extern NSString * const TI_APPLICATION_DEPLOYTYPE;
 extern NSString * const TI_APPLICATION_ID;
@@ -29,6 +32,10 @@ extern NSString * const TI_APPLICATION_GUID;
 	[appListeners removeAllObjects];
 	RELEASE_TO_NIL(appListeners);
 	RELEASE_TO_NIL(properties);
+#ifdef USE_TI_APPIOS
+	RELEASE_TO_NIL(iOS);
+#endif	
+	[[NSNotificationCenter defaultCenter] removeObserver:self];
 	[super dealloc];
 }
 
@@ -210,6 +217,9 @@ extern NSString * const TI_APPLICATION_GUID;
 -(void)didReceiveMemoryWarning:(NSNotification*)notification
 {
 	RELEASE_TO_NIL(properties);
+#ifdef USE_TI_APPIOS
+	RELEASE_TO_NIL(iOS);
+#endif
 	[super didReceiveMemoryWarning:notification];
 }
 
@@ -298,6 +308,14 @@ extern NSString * const TI_APPLICATION_GUID;
 	}
 }
 
+-(void)resumed:(id)sender
+{
+	if ([self _hasListeners:@"resumed"])
+	{
+		[self fireEvent:@"resumed" withObject:nil];
+	}
+}
+
 #pragma mark Delegate stuff
 
 -(void)proximityDetectionChanged:(NSNotification*)note
@@ -380,6 +398,18 @@ extern NSString * const TI_APPLICATION_GUID;
 {
 	return TI_APPLICATION_GUID;
 }
+
+#if defined(USE_TI_APPIOS) && __IPHONE_OS_VERSION_MAX_ALLOWED >= __IPHONE_4_0
+-(id)iOS
+{
+	if (iOS==nil)
+	{
+		iOS = [[TiAppiOSProxy alloc] _initWithPageContext:[self pageContext]];
+	}
+	return iOS;
+}
+#endif
+
 
 @end
 

@@ -39,8 +39,17 @@ public class JSONModule extends KrollModule {
 			}
 			sb.append("]");
 			return sb.toString();
+		} else if (data instanceof Number) {
+			// Normalize whole numbers as ints
+			double d = ((Number)data).doubleValue();
+			double whole = d < 0 ? Math.ceil(d) : Math.floor(d);
+			if (d - whole == 0) {
+				return "" + ((int) d);
+			} else {
+				return "" + d;
+			}
 		} else {
-			return TiConvert.toString(data);
+			return "\"" + TiConvert.toJSONString(data) + "\"";
 		}
 	}
 
@@ -49,7 +58,6 @@ public class JSONModule extends KrollModule {
 		throws JSONException
 	{
 		Object parsed = null;
-
 		if (json == null || json.length() == 0) {
 			return parsed;
 		}

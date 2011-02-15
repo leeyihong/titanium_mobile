@@ -21,14 +21,21 @@ import org.apache.commons.codec.digest.DigestUtils;
 import org.appcelerator.kroll.KrollDict;
 import org.appcelerator.kroll.KrollProxy;
 import org.appcelerator.titanium.TiBlob;
+import org.appcelerator.titanium.TiC;
 import org.appcelerator.titanium.TiContext;
+import org.appcelerator.titanium.TiDimension;
+import org.appcelerator.titanium.view.TiBackgroundDrawable;
 import org.appcelerator.titanium.view.TiUIView;
+import org.appcelerator.titanium.proxy.TiViewProxy;
 
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.DialogInterface.OnClickListener;
+import android.content.pm.ActivityInfo;
+import android.content.res.Configuration;
+import android.content.res.Resources;
 import android.graphics.Bitmap;
 import android.graphics.Bitmap.CompressFormat;
 import android.graphics.Bitmap.Config;
@@ -47,7 +54,9 @@ import android.os.Build;
 import android.os.Process;
 import android.util.TypedValue;
 import android.view.Gravity;
+import android.view.OrientationEventListener;
 import android.view.View;
+import android.view.View.MeasureSpec;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.TextView;
 
@@ -56,10 +65,17 @@ public class TiUIHelper
 	private static final String LCAT = "TiUIHelper";
 	private static final boolean DBG = TiConfig.LOGD;
 
+	public static final int PORTRAIT = 1;
+	public static final int UPSIDE_PORTRAIT = 2;
+	public static final int LANDSCAPE_LEFT = 3;
+	public static final int LANDSCAPE_RIGHT = 4;
+	public static final int FACE_UP = 5;
+	public static final int FACE_DOWN = 6;
+	public static final int UNKNOWN = 7;
 	public static final Pattern SIZED_VALUE = Pattern.compile("([0-9]*\\.?[0-9]+)\\W*(px|dp|dip|sp|sip|mm|pt|in)?");
 
 	private static Method overridePendingTransition;
-	private static Map<String, String> raImageKeys = Collections.synchronizedMap(new HashMap<String, String>());
+	private static Map<String, String> resourceImageKeys = Collections.synchronizedMap(new HashMap<String, String>());
 	
 	public static OnClickListener createDoNothingListener() {
 		return new OnClickListener() {
@@ -172,6 +188,24 @@ public class TiUIHelper
 
 		return value;
 	}
+	
+	public static float getRawSize(int unit, float size, Context context) {
+		Resources r;
+		if (context != null) {
+			r = context.getResources();
+		} else {
+			r = Resources.getSystem();
+		}
+		return TypedValue.applyDimension(unit, size, r.getDisplayMetrics());
+	}
+	
+	public static float getRawDIPSize(float size, Context context) {
+		return getRawSize(TypedValue.COMPLEX_UNIT_DIP, size, context);
+	}
+	
+	public static float getRawSize(String size, Context context) {
+		return getRawSize(getSizeUnits(size), getSize(size), context);
+	}
 
 	public static void styleText(TextView tv, KrollDict d) {
 		String fontSize = null;
@@ -192,7 +226,13 @@ public class TiUIHelper
 
 	public static void styleText(TextView tv, String fontFamily, String fontSize, String fontWeight) {
 		Typeface tf = tv.getTypeface();
-		tf = Typeface.SANS_SERIF; // default
+		tf = toTypeface(fontFamily);
+		tv.setTypeface(tf, toTypefaceStyle(fontWeight));
+		tv.setTextSize(getSizeUnits(fontSize), getSize(fontSize));
+	}
+
+	public static Typeface toTypeface(String fontFamily) {
+		Typeface tf = Typeface.SANS_SERIF; // default
 
 		if (fontFamily != null) {
 			if ("monospace".equals(fontFamily)) {
@@ -207,8 +247,7 @@ public class TiUIHelper
 				}
 			}
 		}
-		tv.setTypeface(tf, toTypefaceStyle(fontWeight));
-		tv.setTextSize(getSizeUnits(fontSize), getSize(fontSize));
+		return tf;
 	}
 
 	public static String getDefaultFontSize(Context context) {
@@ -287,6 +326,11 @@ public class TiUIHelper
 		tv.setGravity(gravity);
 	}
 
+	public static void setTextViewDIPPadding(TextView textView, int horizontalPadding, int verticalPadding) {
+		int rawHPadding = (int)getRawDIPSize(horizontalPadding, textView.getContext());
+		int rawVPadding = (int)getRawDIPSize(verticalPadding, textView.getContext());
+		textView.setPadding(rawHPadding, rawVPadding, rawHPadding, rawVPadding);
+	}
 
 	public static StateListDrawable buildBackgroundDrawable(TiContext tiContext,
 			String image,
@@ -437,13 +481,51 @@ public class TiUIHelper
 		return null;
 	}
 
-	public static KrollDict viewToImage(TiContext context, View view)
+	public static KrollDict viewToImage(TiContext context, KrollDict proxyDict, View view)
 	{
 		KrollDict image = new KrollDict();
 
 		if (view != null) {
 			int width = view.getWidth();
 			int height = view.getHeight();
+
+			// maybe move this out to a separate method once other refactor regarding "getWidth", etc is done
+			if(view.getWidth() == 0) {
+				if(proxyDict != null) {
+					if(proxyDict.containsKey(TiC.PROPERTY_WIDTH)) {
+						TiDimension widthDimension = new TiDimension(proxyDict.getString(TiC.PROPERTY_WIDTH), TiDimension.TYPE_WIDTH);
+						width = widthDimension.getAsPixels(view);
+					}
+				}
+			}
+			if(view.getHeight() == 0) {
+				if(proxyDict != null) {
+					if(proxyDict.containsKey(TiC.PROPERTY_HEIGHT)) {
+						TiDimension heightDimension = new TiDimension(proxyDict.getString(TiC.PROPERTY_HEIGHT), TiDimension.TYPE_HEIGHT);
+						height = heightDimension.getAsPixels(view);
+					}
+				}
+			}
+			view.measure(MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(height, MeasureSpec.EXACTLY));
+			if (view.getParent() == null) {
+				Log.i(LCAT, "view does not have parent, calling layout");
+				view.layout(0, 0, width, height);
+			}
+
+			// now that we have forced the view to layout itself, grab dimensions
+			width = view.getMeasuredWidth();
+			height = view.getMeasuredHeight();
+
+			// set a default BS value if the dimension is still 0 and log a warning
+			if(width == 0) {
+				width = 100;
+				Log.e(LCAT, "width property is 0 for view, display view before calling toImage()");
+			}
+			if(height == 0) {
+				height = 100;
+				Log.e(LCAT, "height property is 0 for view, display view before calling toImage()");
+			}
+
 			Bitmap bitmap = Bitmap.createBitmap(width, height, Config.RGB_565);
 			Canvas canvas = new Canvas(bitmap);
 
@@ -477,10 +559,10 @@ public class TiUIHelper
 		return b;
 	}
 	
-	private static String getRAKeyForImage(String url)
+	private static String getResourceKeyForImage(String url)
 	{
-		if (raImageKeys.containsKey(url)) {
-			return raImageKeys.get(url);
+		if (resourceImageKeys.containsKey(url)) {
+			return resourceImageKeys.get(url);
 		}
 		
 		Pattern pattern = Pattern.compile("^.*/Resources/images/(.*$)");
@@ -515,43 +597,66 @@ public class TiUIHelper
 		result.append("_");
 		result.append(DigestUtils.md5Hex(forHash).substring(0, 10));
 		String sResult = result.toString();
-		raImageKeys.put(url, sResult);
+		resourceImageKeys.put(url, sResult);
 		return sResult;
 	}
 	
-	public static int getResourceId(TiContext context, String url)
+	public static int getResourceId(String url)
 	{
 		if (!url.contains("Resources/images/")) {
 			return 0;
 		}
 		
-		String key = getRAKeyForImage(url);
+		String key = getResourceKeyForImage(url);
 		if (key == null) {
 			return 0;
 		}
 		
-		return TiResourceHelper.getDrawable(key);
+		try {
+			return TiRHelper.getResource("drawable." + key);
+		} catch (TiRHelper.ResourceNotFoundException e) {
+			return 0;
+		}
 	}
-
+	
 	public static Bitmap getResourceBitmap(TiContext context, String url)
 	{
-		int id = getResourceId(context, url);
+		int id = getResourceId(url);
 		if (id == 0) {
 			return null;
+		} else {
+			return getResourceBitmap(context, id);
 		}
+	}
+	
+	public static Bitmap getResourceBitmap(TiContext context, int res_id)
+	{
+		BitmapFactory.Options opts = new BitmapFactory.Options();
+		opts.inPurgeable = true;
+		opts.inInputShareable = true;
 		
-		Bitmap bitmap = BitmapFactory.decodeResource(context.getActivity().getResources(), id);
+		Bitmap bitmap = null;
+		try {
+			bitmap = BitmapFactory.decodeResource(context.getActivity().getResources(), res_id, opts);
+		} catch (OutOfMemoryError e) {
+			Log.e(LCAT, "Unable to load bitmap. Not enough memory: " + e.getMessage());
+		}
 		return bitmap;
 	}
 	
 	public static Drawable getResourceDrawable(TiContext context, String url)
 	{
-		int id = getResourceId(context, url);
+		int id = getResourceId(url);
 		if (id == 0) {
 			return null;
 		}
 		
-		return context.getActivity().getResources().getDrawable(id);
+		return getResourceDrawable(context, id);
+	}
+	
+	public static Drawable getResourceDrawable(TiContext context, int res_id)
+	{
+		return context.getActivity().getResources().getDrawable(res_id);
 	}
 	
 	
@@ -594,9 +699,8 @@ public class TiUIHelper
 	}
 	
 	public static void setDrawableOpacity(Drawable drawable, float opacity) {
-		if (drawable instanceof ColorDrawable) {
-			ColorDrawable colorDrawable = (ColorDrawable) drawable;
-			colorDrawable.setAlpha(Math.round(opacity * 255));
+		if (drawable instanceof ColorDrawable || drawable instanceof TiBackgroundDrawable) {
+			drawable.setAlpha(Math.round(opacity * 255));
 		} else if (drawable != null) {
 			drawable.setColorFilter(createColorFilterForOpacity(opacity));
 		}
@@ -615,24 +719,75 @@ public class TiUIHelper
 		}
 
 		if (focusState > TiUIView.SOFT_KEYBOARD_DEFAULT_ON_FOCUS) {
-			InputMethodManager imm = (InputMethodManager) view.getContext().getSystemService(Activity.INPUT_METHOD_SERVICE);
-			if (imm != null) {
-				boolean useForce = (Build.VERSION.SDK_INT <= Build.VERSION_CODES.DONUT || Build.VERSION.SDK_INT >= 8) ? true : false;
-				String model = TiPlatformHelper.getModel(); 
-				if (model != null && model.toLowerCase().startsWith("droid")) {
-					useForce = true;
-				}
-				if (DBG) {
-					Log.i(LCAT, "soft input change request: flag: " + focusState + " useForce: " + useForce);
-				}
-				if (focusState == TiUIView.SOFT_KEYBOARD_SHOW_ON_FOCUS) {
-					imm.showSoftInput(view, useForce ? InputMethodManager.SHOW_FORCED : InputMethodManager.SHOW_IMPLICIT);
-				} else if (focusState == TiUIView.SOFT_KEYBOARD_HIDE_ON_FOCUS) {
-					imm.hideSoftInputFromWindow(view.getWindowToken(), useForce ? 0 : InputMethodManager.HIDE_IMPLICIT_ONLY);
-				} else {
-					Log.w(LCAT, "Unknown onFocus state: " + focusState);
-				}
+			if (focusState == TiUIView.SOFT_KEYBOARD_SHOW_ON_FOCUS) {
+				showSoftKeyboard(view, true);
+			} else if (focusState == TiUIView.SOFT_KEYBOARD_HIDE_ON_FOCUS) {
+				showSoftKeyboard(view, false);
+			} else {
+				Log.w(LCAT, "Unknown onFocus state: " + focusState);
 			}
 		}
+	}
+	
+	public static void showSoftKeyboard(View view, boolean show) 
+	{
+		InputMethodManager imm = (InputMethodManager) view.getContext().getSystemService(Activity.INPUT_METHOD_SERVICE);
+
+		if (imm != null) {
+			boolean useForce = (Build.VERSION.SDK_INT <= Build.VERSION_CODES.DONUT || Build.VERSION.SDK_INT >= 8) ? true : false;
+			String model = TiPlatformHelper.getModel(); 
+			if (model != null && model.toLowerCase().startsWith("droid")) {
+				useForce = true;
+			}
+			
+			if (show) {
+				imm.showSoftInput(view, useForce ? InputMethodManager.SHOW_FORCED : InputMethodManager.SHOW_IMPLICIT);
+			} else {
+				imm.hideSoftInputFromWindow(view.getWindowToken(), useForce ? 0 : InputMethodManager.HIDE_IMPLICIT_ONLY);
+			}
+		}
+	}
+	
+	public static int convertToAndroidOrientation(int orientation) {
+		switch (orientation) {
+			case LANDSCAPE_LEFT :
+			case LANDSCAPE_RIGHT :
+				return ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE;
+			case PORTRAIT :
+			case UPSIDE_PORTRAIT :
+				return ActivityInfo.SCREEN_ORIENTATION_PORTRAIT;
+		}
+		return ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED;
+	}
+	
+	public static int convertToTiOrientation(int orientation) {
+		switch(orientation)
+		{
+			case Configuration.ORIENTATION_LANDSCAPE:
+			case ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE:
+				return LANDSCAPE_LEFT;
+			case Configuration.ORIENTATION_PORTRAIT:
+			// == case ActivityInfo.SCREEN_ORIENTATION_PORTRAIT:
+				return PORTRAIT;
+		}
+		return UNKNOWN;
+	}
+	
+	public static int convertToTiOrientation(int orientation, int degrees) {
+		if (degrees == OrientationEventListener.ORIENTATION_UNKNOWN) {
+			return convertToTiOrientation(orientation);
+		}
+		switch (orientation) {
+		case Configuration.ORIENTATION_LANDSCAPE:
+		case ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE:
+			if (degrees >= 270 && degrees <= 360) {
+				return LANDSCAPE_LEFT;
+			} else {
+				return LANDSCAPE_RIGHT;
+			}
+		case Configuration.ORIENTATION_PORTRAIT:
+			return PORTRAIT;
+		}
+		return UNKNOWN;
 	}
 }

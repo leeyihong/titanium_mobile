@@ -124,14 +124,7 @@
 -(void)setText_:(id)text
 {
 	[[self label] setText:[TiUtils stringValue:text]];
-	if (requiresLayout)
-	{
-		[(TiViewProxy *)[self proxy] setNeedsReposition];
-	}
-	else
-	{
-		[(TiViewProxy *)[self proxy] setNeedsRepositionIfAutoSized];
-	}	
+	[(TiViewProxy *)[self proxy] contentsWillChange];
 }
 
 -(void)setColor_:(id)color
@@ -149,14 +142,7 @@
 -(void)setFont_:(id)font
 {
 	[[self label] setFont:[[TiUtils fontValue:font] font]];
-	if (requiresLayout)
-	{
-		[(TiViewProxy *)[self proxy] setNeedsReposition];
-	}
-	else
-	{
-		[(TiViewProxy *)[self proxy] setNeedsRepositionIfAutoSized];
-	}
+	[(TiViewProxy *)[self proxy] contentsWillChange];
 }
 
 -(void)setMinimumFontSize_:(id)size
@@ -180,7 +166,8 @@
     if (url != nil) {
         UIImage* bgImage = [UIImageResize resizedImage:self.frame.size 
                                   interpolationQuality:kCGInterpolationDefault
-                                                 image:[self loadImage:url]];
+                                                 image:[self loadImage:url]
+												 hires:NO];
         
         // Resizing doesn't preserve stretchability.  Should we maybe fix this?
         bgImage = [self loadImage:url];

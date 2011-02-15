@@ -11,7 +11,6 @@
 #import "TiUtils.h"
 
 @implementation TiUIScrollView
-@synthesize verticalLayoutBoundary;
 
 - (void) dealloc
 {
@@ -80,6 +79,7 @@
 -(void)handleContentSize
 {
 	CGSize newContentSize = [self bounds].size;
+	CGFloat scale = [scrollView zoomScale];
 
 	switch (contentWidth.type)
 	{
@@ -111,14 +111,14 @@
 			minimumContentHeight = newContentSize.height;
 			break;
 	}
-	newContentSize.height = MAX(newContentSize.height,minimumContentHeight);
+	newContentSize.width *= scale;
+	newContentSize.height = scale * MAX(newContentSize.height,minimumContentHeight);
 
 	[scrollView setContentSize:newContentSize];
 	CGRect wrapperBounds;
 	wrapperBounds.origin = CGPointZero;
 	wrapperBounds.size = newContentSize;
-	[wrapperView setBounds:wrapperBounds];
-	[wrapperView setCenter:CGPointMake(newContentSize.width/2, newContentSize.height/2)];
+	[wrapperView setFrame:wrapperBounds];
 	needsHandleContentSize = NO;
 	[(TiViewProxy *)[self proxy] layoutChildren:NO];
 }
@@ -204,6 +204,11 @@
 #pragma mark scrollView delegate stuff
 
 
+- (void)scrollViewDidEndDecelerating:(UIScrollView *)scrollView_               // any offset changes
+{
+	[(id<UIScrollViewDelegate>)[self proxy] scrollViewDidEndDecelerating:scrollView_];
+}
+
 - (void)scrollViewDidScroll:(UIScrollView *)scrollView_               // any offset changes
 {
 	[(id<UIScrollViewDelegate>)[self proxy] scrollViewDidScroll:scrollView_];
@@ -222,22 +227,23 @@
 
 #pragma mark Keyboard delegate stuff
 
+-(void)keyboardDidShowAtHeight:(CGFloat)keyboardTop
+{
+	InsetScrollViewForKeyboard(scrollView,keyboardTop,minimumContentHeight);
+}
+
+-(void)scrollToShowView:(TiUIView *)firstResponderView withKeyboardHeight:(CGFloat)keyboardTop
+{
+	CGRect responderRect = [wrapperView convertRect:[firstResponderView bounds] fromView:firstResponderView];
+	OffsetScrollViewForRect(scrollView,keyboardTop,minimumContentHeight,responderRect);
+}
+
 -(void)keyboardDidShowAtHeight:(CGFloat)keyboardTop forView:(TiUIView *)firstResponderView
 {
 	lastFocusedView = firstResponderView;
 	CGRect responderRect = [wrapperView convertRect:[firstResponderView bounds] fromView:firstResponderView];
 	
 	ModifyScrollViewForKeyboardHeightAndContentHeightWithResponderRect(scrollView,keyboardTop,minimumContentHeight,responderRect);
-}
-
--(void)keyboardDidHideForView:(TiUIView *)hidingView
-{
-	if(hidingView != lastFocusedView)
-	{
-		return;
-	}
-
-	RestoreScrollViewFromKeyboard(scrollView);
 }
 
 @end

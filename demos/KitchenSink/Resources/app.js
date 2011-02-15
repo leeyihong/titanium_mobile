@@ -8,7 +8,7 @@ var tabGroup = Titanium.UI.createTabGroup({id:'tabGroup1'});
 //
 // create base UI tab and root window
 //
-var win1 = Titanium.UI.createWindow({id:'win1'});
+var win1 = Titanium.UI.createWindow({className:'win1'});
 
 var tab1 = Titanium.UI.createTab({
 	id:'tab1',
@@ -53,7 +53,8 @@ var win4 = Titanium.UI.createWindow({
 var tab4 = Titanium.UI.createTab({
     icon:'images/tabs/KS_nav_platform.png',
     titleid:'platform_win_title',
-	active:true,
+// Commented out as per 1773
+//	active:true,
     window:win4
 });
 
@@ -154,7 +155,6 @@ tabGroup.addEventListener('close', function(e)
 	setTimeout(function()
 	{
 		messageWin.close({opacity:0,duration:500});
-		tabGroup.open();
 	},1000);
 });
 
@@ -227,41 +227,50 @@ var indWin = null;
 var actInd = null;
 function showIndicator()
 {
-	// window container
-	indWin = Titanium.UI.createWindow({
-		height:150,
-		width:150
-	});
+	if (Ti.Platform.osname != 'android')
+	{
+		// window container
+		indWin = Titanium.UI.createWindow({
+			height:150,
+			width:150
+		});
 
-	// black view
-	var indView = Titanium.UI.createView({
-		height:150,
-		width:150,
-		backgroundColor:'#000',
-		borderRadius:10,
-		opacity:0.8
-	});
-	indWin.add(indView);
+		// black view
+		var indView = Titanium.UI.createView({
+			height:150,
+			width:150,
+			backgroundColor:'#000',
+			borderRadius:10,
+			opacity:0.8
+		});
+		indWin.add(indView);
+	}
 
 	// loading indicator
 	actInd = Titanium.UI.createActivityIndicator({
 		style:Titanium.UI.iPhone.ActivityIndicatorStyle.BIG,
 		height:30,
-		width:30
+		width:30,
 	});
-	indWin.add(actInd);
+	
+	if (Ti.Platform.osname != 'android')
+	{
+		indWin.add(actInd);
 
-	// message
-	var message = Titanium.UI.createLabel({
-		text:'Loading',
-		color:'#fff',
-		width:'auto',
-		height:'auto',
-		font:{fontSize:20,fontWeight:'bold'},
-		bottom:20
-	});
-	indWin.add(message);
-	indWin.open();
+		// message
+		var message = Titanium.UI.createLabel({
+			text:'Loading',
+			color:'#fff',
+			width:'auto',
+			height:'auto',
+			font:{fontSize:20,fontWeight:'bold'},
+			bottom:20
+		});
+		indWin.add(message);
+		indWin.open();
+	} else {
+		actInd.message = "Loading";
+	}
 	actInd.show();
 
 };
@@ -269,7 +278,9 @@ function showIndicator()
 function hideIndicator()
 {
 	actInd.hide();
-	indWin.close({opacity:0,duration:500});
+	if (Ti.Platform.osname != 'android') {
+		indWin.close({opacity:0,duration:500});
+	}
 };
 
 //
@@ -317,3 +328,30 @@ Ti.API.info("should be 1.0, was = "+String.format('%1.1f',1));
 Ti.API.info("should be hello, was = "+String.format('%s','hello'));
 
 
+Ti.include("examples/version.js");
+
+if (isiOS4Plus())
+{
+	// register a background service. this JS will run when the app is backgrounded
+	var service = Ti.App.iOS.registerBackgroundService({url:'bg.js'});
+	
+	Ti.API.info("registered background service = "+service);
+
+	// listen for a local notification event
+	Ti.App.iOS.addEventListener('notification',function(e)
+	{
+		Ti.API.info("local notification received: "+JSON.stringify(e));
+	});
+
+	// fired when an app resumes for suspension
+	Ti.App.addEventListener('resume',function(e){
+		Ti.API.info("app is resuming from the background");
+	});
+	Ti.App.addEventListener('resumed',function(e){
+		Ti.API.info("app has resumed from the background");
+	});
+
+	Ti.App.addEventListener('pause',function(e){
+		Ti.API.info("app was paused from the foreground");
+	});
+}

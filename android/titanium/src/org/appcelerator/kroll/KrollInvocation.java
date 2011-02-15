@@ -13,8 +13,14 @@ import java.util.List;
 import org.appcelerator.titanium.TiContext;
 import org.mozilla.javascript.Scriptable;
 
-public class KrollInvocation {
+import android.app.Activity;
 
+public class KrollInvocation {
+	protected static Object invocationPoolSync = new Object();
+	protected static KrollInvocation invocationPool = new KrollInvocation();
+	protected static int poolSize = 0;
+	protected static final int MAX_POOL_SIZE = 32;
+	
 	protected Scriptable scope, thisObj;
 	protected String name;
 	protected boolean isPropertyGet, isPropertySet, isMethod;
@@ -23,7 +29,20 @@ public class KrollInvocation {
 	protected KrollProperty property;
 	protected TiContext tiContext;
 	protected KrollProxy proxy;
+	protected KrollInvocation next;
 	protected KrollInvocation() {}
+	
+	protected static KrollInvocation obtainInvocation() {
+		synchronized (invocationPoolSync) {
+			if (invocationPool != null) {
+				KrollInvocation inv = invocationPool;
+				invocationPool = inv.next;
+				inv.next = null;
+				return inv;
+			}
+		}
+		return new KrollInvocation();
+	}
 	
 	public static KrollInvocation createMethodInvocation(Scriptable scope, Scriptable thisObj, String name, KrollMethod method, KrollProxy proxy)
 	{
@@ -32,7 +51,7 @@ public class KrollInvocation {
 	
 	public static KrollInvocation createMethodInvocation(TiContext tiContext, Scriptable scope, Scriptable thisObj, String name, KrollMethod method, KrollProxy proxy)
 	{
-		KrollInvocation invocation = new KrollInvocation();
+		KrollInvocation invocation = obtainInvocation();
 		invocation.tiContext = tiContext;
 		invocation.scope = scope;
 		invocation.thisObj = thisObj;
@@ -50,7 +69,7 @@ public class KrollInvocation {
 	
 	public static KrollInvocation createPropertyGetInvocation(TiContext tiContext, Scriptable scope, Scriptable thisObj, String name, KrollProperty property, KrollProxy proxy)
 	{
-		KrollInvocation invocation = new KrollInvocation();
+		KrollInvocation invocation = obtainInvocation();
 		invocation.tiContext = tiContext;
 		invocation.scope = scope;
 		invocation.thisObj = thisObj;
@@ -68,7 +87,7 @@ public class KrollInvocation {
 	
 	public static KrollInvocation createPropertySetInvocation(TiContext tiContext, Scriptable scope, Scriptable thisObj, String name, KrollProperty property, KrollProxy proxy)
 	{
-		KrollInvocation invocation = new KrollInvocation();
+		KrollInvocation invocation = obtainInvocation();
 		invocation.tiContext = tiContext;
 		invocation.scope = scope;
 		invocation.thisObj = thisObj;
@@ -80,37 +99,37 @@ public class KrollInvocation {
 	}
 	
 	public String toString() {
-		String str = "";
+		StringBuilder sb = new StringBuilder();
 		if (isPropertyGet) {
-			str += "[getProperty ";
+			sb.append("[getProperty ");
 		} else if (isPropertySet) {
-			str += "[setProperty ";
+			sb.append("[setProperty ");
 		} else if (isMethod) {
-			str += "[callMethod ";
+			sb.append("[callMethod ");
 		}
 		
 		if (proxy != null) {
-			str += proxy.getAPIName() + ".";
+			sb.append(proxy.getAPIName()).append(".");
 		}
 		
-		str += name + " ";
+		sb.append(name).append(" ");
 		if (isPropertyGet || isPropertySet) {
-			str += property;
+			sb.append(property);
 		} else if (isMethod) {
-			str += method;
+			sb.append(method);
 			if (arguments != null) {
 				Iterator<KrollArgument> iter = arguments.iterator();
 				while(iter.hasNext()) {
 					KrollArgument arg = iter.next();
-					str += arg;
+					sb.append(arg);
 					if (iter.hasNext()) {
-						str += " ";
+						sb.append(" ");
 					}
 				}
 			}
 		}
-		str += "]";
-		return str;
+		sb.append("]");
+		return sb.toString();
 	}
 
 	public void addArgument(KrollArgument arg) {
@@ -137,7 +156,45 @@ public class KrollInvocation {
 		}
 		return false;
 	}
+
+	public void recycle() {
+		synchronized (invocationPoolSync) {
+			if (poolSize < MAX_POOL_SIZE) {
+				clearForRecycle();
+				next = invocationPool;
+				invocationPool = this;
+			}
+		}
+	}
+
+	public KrollInvocation copy() {
+		KrollInvocation other = obtainInvocation();
+		other.arguments = (ArrayList<KrollArgument>) arguments.clone();
+		other.isMethod = isMethod;
+		other.isPropertyGet = isPropertyGet;
+		other.isPropertySet = isPropertySet;
+		other.method = method;
+		other.name = name;
+		other.property = property;
+		other.proxy = proxy;
+		other.scope = scope;
+		other.thisObj = thisObj;
+		other.tiContext = tiContext;
+		return other;
+	}
 	
+	protected void clearForRecycle() {
+		arguments.clear();
+		isMethod = isPropertyGet = isPropertySet = false;
+		method = null;
+		name = null;
+		property = null;
+		proxy = null;
+		scope = null;
+		thisObj = null;
+		tiContext = null;
+	}
+
 	public Scriptable getScope() {
 		return scope;
 	}
@@ -164,6 +221,13 @@ public class KrollInvocation {
 
 	public TiContext getTiContext() {
 		return tiContext;
+	}
+	
+	public Activity getActivity() {
+		if (tiContext == null) {
+			return null;
+		}
+		return tiContext.getActivity();
 	}
 
 	public boolean isMethod() {

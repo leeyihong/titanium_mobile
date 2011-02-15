@@ -6,18 +6,33 @@
  */
 package ti.modules.titanium.android;
 
+import java.util.List;
+
+import org.appcelerator.kroll.KrollDict;
+import org.appcelerator.kroll.KrollInvocation;
 import org.appcelerator.kroll.KrollModule;
 import org.appcelerator.kroll.annotations.Kroll;
+import org.appcelerator.titanium.TiC;
 import org.appcelerator.titanium.TiContext;
+import org.appcelerator.titanium.proxy.IntentProxy;
+import org.appcelerator.titanium.proxy.RProxy;
+import org.appcelerator.titanium.proxy.ServiceProxy;
+import org.appcelerator.titanium.util.Log;
 
 import android.app.Activity;
-import android.app.AlarmManager;
+import android.app.ActivityManager;
+import android.app.Notification;
+import android.app.ActivityManager.RunningServiceInfo;
+import android.app.PendingIntent;
+import android.content.Context;
 import android.content.Intent;
+import android.content.pm.ActivityInfo;
+import android.media.AudioManager;
 
 @Kroll.module
 public class AndroidModule extends KrollModule
 {
-	private static final String LCAT = "TiAndroid";
+	private static final String TAG = "TiAndroid";
 
 	@Kroll.constant public static final String ACTION_AIRPLANE_MODE_CHANGED = Intent.ACTION_AIRPLANE_MODE_CHANGED;
 	@Kroll.constant public static final String ACTION_ALL_APPS = Intent.ACTION_ALL_APPS;
@@ -118,7 +133,7 @@ public class AndroidModule extends KrollModule
 	@Kroll.constant public static final String CATEGORY_TAB = Intent.CATEGORY_TAB;
 	@Kroll.constant public static final String CATEGORY_TEST = Intent.CATEGORY_TEST;
 	@Kroll.constant public static final String CATEGORY_UNIT_TEST = Intent.CATEGORY_UNIT_TEST;
-	
+
 	@Kroll.constant public static final String EXTRA_ALARM_COUNT = Intent.EXTRA_ALARM_COUNT;
 	@Kroll.constant public static final String EXTRA_BCC = Intent.EXTRA_BCC;
 	@Kroll.constant public static final String EXTRA_CC = Intent.EXTRA_CC;
@@ -167,20 +182,154 @@ public class AndroidModule extends KrollModule
 	@Kroll.constant public static final int FLAG_RECEIVER_REGISTERED_ONLY = Intent.FLAG_RECEIVER_REGISTERED_ONLY;
 
 	@Kroll.constant public static final int URI_INTENT_SCHEME = Intent.URI_INTENT_SCHEME;
-	
-	@Kroll.constant public static final int PENDING_INTENT_FOR_ACTIVITY = 0;
-	@Kroll.constant public static final int PENDING_INTENT_FOR_SERVICE = 1;
-	@Kroll.constant public static final int PENDING_INTENT_FOR_BROADCAST = 2;
-	@Kroll.constant public static final int PENDING_INTENT_MAX_VALUE = PENDING_INTENT_FOR_BROADCAST;
 
-	public AndroidModule(TiContext tiContext) {
+	@Kroll.constant public static final int PENDING_INTENT_FOR_ACTIVITY = IntentProxy.TYPE_ACTIVITY;
+	@Kroll.constant public static final int PENDING_INTENT_FOR_SERVICE = IntentProxy.TYPE_SERVICE;
+	@Kroll.constant public static final int PENDING_INTENT_FOR_BROADCAST = IntentProxy.TYPE_BROADCAST;
+	@Kroll.constant public static final int PENDING_INTENT_MAX_VALUE = PENDING_INTENT_FOR_BROADCAST;
+	@Kroll.constant public static final int FLAG_CANCEL_CURRENT = PendingIntent.FLAG_CANCEL_CURRENT;
+	@Kroll.constant public static final int FLAG_NO_CREATE = PendingIntent.FLAG_NO_CREATE;
+	@Kroll.constant public static final int FLAG_ONE_SHOT = PendingIntent.FLAG_ONE_SHOT;
+	@Kroll.constant public static final int FLAG_UPDATE_CURRENT = PendingIntent.FLAG_UPDATE_CURRENT;
+
+	@Kroll.constant public static final int RESULT_OK = Activity.RESULT_OK;
+	@Kroll.constant public static final int RESULT_CANCELED = Activity.RESULT_CANCELED;
+	@Kroll.constant public static final int RESULT_FIRST_USER = Activity.RESULT_FIRST_USER;
+
+	@Kroll.constant public static final int SCREEN_ORIENTATION_BEHIND = ActivityInfo.SCREEN_ORIENTATION_BEHIND;
+	@Kroll.constant public static final int SCREEN_ORIENTATION_LANDSCAPE = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE;
+	@Kroll.constant public static final int SCREEN_ORIENTATION_NOSENSOR = ActivityInfo.SCREEN_ORIENTATION_NOSENSOR;
+	@Kroll.constant public static final int SCREEN_ORIENTATION_PORTRAIT = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT;
+	@Kroll.constant public static final int SCREEN_ORIENTATION_SENSOR = ActivityInfo.SCREEN_ORIENTATION_SENSOR;
+	@Kroll.constant public static final int SCREEN_ORIENTATION_UNSPECIFIED = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED;
+	@Kroll.constant public static final int SCREEN_ORIENTATION_USER = ActivityInfo.SCREEN_ORIENTATION_USER;
+
+	@Kroll.constant public static final int DEFAULT_ALL = Notification.DEFAULT_ALL;
+	@Kroll.constant public static final int DEFAULT_LIGHTS = Notification.DEFAULT_LIGHTS;
+	@Kroll.constant public static final int DEFAULT_SOUND = Notification.DEFAULT_SOUND;
+	@Kroll.constant public static final int DEFAULT_VIBRATE = Notification.DEFAULT_VIBRATE;
+	@Kroll.constant public static final int FLAG_AUTO_CANCEL = Notification.FLAG_AUTO_CANCEL;
+	@Kroll.constant public static final int FLAG_INSISTENT = Notification.FLAG_INSISTENT;
+	@Kroll.constant public static final int FLAG_NO_CLEAR = Notification.FLAG_NO_CLEAR;
+	@Kroll.constant public static final int FLAG_ONGOING_EVENT = Notification.FLAG_ONGOING_EVENT;
+	@Kroll.constant public static final int FLAG_ONLY_ALERT_ONCE = Notification.FLAG_ONLY_ALERT_ONCE;
+	@Kroll.constant public static final int FLAG_SHOW_LIGHTS = Notification.FLAG_SHOW_LIGHTS;
+	@Kroll.constant public static final int STREAM_DEFAULT = Notification.STREAM_DEFAULT;
+
+	@Kroll.constant public static final int STREAM_ALARM = AudioManager.STREAM_ALARM;
+	@Kroll.constant public static final int STREAM_MUSIC = AudioManager.STREAM_MUSIC;
+	@Kroll.constant public static final int STREAM_NOTIFICATION = AudioManager.STREAM_NOTIFICATION;
+	@Kroll.constant public static final int STREAM_RING = AudioManager.STREAM_RING;
+	@Kroll.constant public static final int STREAM_SYSTEM = AudioManager.STREAM_SYSTEM;
+	@Kroll.constant public static final int STREAM_VOICE_CALL = AudioManager.STREAM_VOICE_CALL;
+
+	protected RProxy r;
+
+	public AndroidModule(TiContext tiContext)
+	{
 		super(tiContext);
 	}
 
 	@Kroll.method
-	public void registerAlarm(PendingIntentProxy proxy) 
+	public IntentProxy createIntent(KrollInvocation invocation, Object[] args)
 	{
-		AlarmManager am = (AlarmManager) getTiContext().getActivity().getApplication().getSystemService(Activity.ALARM_SERVICE);
-		am.set(AlarmManager.RTC_WAKEUP, System.currentTimeMillis() + 5000, proxy.getPendingIntent());
+		IntentProxy intent = new IntentProxy(invocation.getTiContext());
+		intent.handleCreationArgs(this, args);
+		return intent;
+	}
+	
+	@Kroll.method
+	public IntentProxy createServiceIntent(KrollInvocation invocation, Object[] args)
+	{
+		IntentProxy intent = new IntentProxy(invocation.getTiContext());
+		intent.setType(IntentProxy.TYPE_SERVICE);
+		intent.handleCreationArgs(this, args);
+		return intent;
+	}
+
+	public IntentProxy createBroadcastIntent(KrollInvocation invocation, Object[] args)
+	{
+		IntentProxy intent = new IntentProxy(invocation.getTiContext());
+		intent.setType(IntentProxy.TYPE_BROADCAST);
+		intent.handleCreationArgs(this, args);
+		return intent;
+	}
+
+	@Kroll.method
+	public IntentProxy createIntentChooser(KrollInvocation invocation, IntentProxy target, String title)
+	{
+		return new IntentProxy(invocation.getTiContext(), Intent.createChooser(target.getIntent(), title));
+	}
+
+	@Kroll.getProperty(name="R")
+	public RProxy getR(KrollInvocation invocation) {
+		if (r == null) {
+			r = new RProxy(invocation.getTiContext(), RProxy.RESOURCE_TYPE_ANDROID);
+		}
+		return r;
+	}
+	
+	@Kroll.method
+	public void startService(KrollInvocation invocation, IntentProxy intentProxy)
+	{
+		Activity activity = invocation.getActivity();
+		if (activity != null) {
+			activity.startService(intentProxy.getIntent());
+			return;
+		}
+		// In case the activity was null, try context->application
+		TiContext tiContext = invocation.getTiContext();
+		if (tiContext != null && tiContext.getTiApp() != null) {
+			tiContext.getTiApp().startService(intentProxy.getIntent());
+			return;
+		}
+		Log.w(TAG, "Could not locate non-null activity/context/application with which to start service.");
+	}
+	
+	@Kroll.method
+	public void stopService(KrollInvocation invocation, IntentProxy intentProxy)
+	{
+		Activity activity = invocation.getActivity();
+		if (activity != null) {
+			activity.stopService(intentProxy.getIntent());
+			return;
+		}
+		// In case the activity was null, try context->application
+		TiContext tiContext = invocation.getTiContext();
+		if (tiContext != null && tiContext.getTiApp() != null) {
+			tiContext.getTiApp().stopService(intentProxy.getIntent());
+			return;
+		}
+		Log.w(TAG, "Could not locate non-null activity/context/application with which to stop service.");
+	}
+	
+	@Kroll.method
+	public boolean isServiceRunning(KrollInvocation invocation, IntentProxy intentProxy)
+	{
+		Intent intent = intentProxy.getIntent();
+		if (intent == null) {
+			Log.w(TAG, "isServiceRunning called with empty intent.  Will return false, but value is meaningless.");
+			return false;
+		}
+		Context context = invocation.getTiContext().getAndroidContext();
+		ActivityManager am = (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
+		if (am != null) {
+			List<RunningServiceInfo> services = am.getRunningServices(Integer.MAX_VALUE);
+			for (RunningServiceInfo service : services) {
+				if (service.service.equals(intent.getComponent())) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+	
+	@Kroll.method
+	public ServiceProxy createService(KrollInvocation invocation, IntentProxy intentProxy)
+	{
+		// Create a new context for the service proxy
+		TiContext tiContext = TiContext.createTiContext(invocation.getTiContext().getTiApp().getRootActivity(), null);
+		tiContext.setServiceContext(true);
+		return new ServiceProxy(tiContext, intentProxy);
 	}
 }

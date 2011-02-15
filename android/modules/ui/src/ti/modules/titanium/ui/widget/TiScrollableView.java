@@ -87,13 +87,14 @@ public class TiScrollableView extends TiCompositeLayout
 
 	public TiScrollableView(ScrollableViewProxy proxy, Handler handler)
 	{
-		super(proxy.getContext(), false);
+		super(proxy.getContext());
 
 		this.proxy = proxy;
 		this.handler = handler;
 		me = this;
 		showPagingControl = true;
-
+		views = new ArrayList<TiViewProxy>();
+		
 		//below this was in "doOpen"
 		//setLayoutParams(new FrameLayout.LayoutParams(LayoutParams.FILL_PARENT, LayoutParams.FILL_PARENT));
 		setFocusable(true);
@@ -277,8 +278,8 @@ public class TiScrollableView extends TiCompositeLayout
 				gallery.setDisplayedChild(to);
 				TiEventHelper.fireUnfocused(views.get(to));
 				onScrolled(from, to);
-				if (pager.getVisibility() == View.VISIBLE) {
-					proxy.setPagerTimeout();
+				if (showPagingControl) {
+					showPager();
 				}
 			}
 //		}
@@ -311,8 +312,8 @@ public class TiScrollableView extends TiCompositeLayout
 				gallery.setDisplayedChild(to);
 				TiEventHelper.fireUnfocused(views.get(to));
 				onScrolled(from, to);
-				if (pager.getVisibility() == View.VISIBLE) {
-					proxy.setPagerTimeout();
+				if (showPagingControl) {
+					showPager();
 				}
 			}
 //		}
@@ -331,6 +332,7 @@ public class TiScrollableView extends TiCompositeLayout
 		}
 
 		pager.setVisibility(View.VISIBLE);
+		proxy.setPagerTimeout();
 	}
 
 	public void hidePager() {
@@ -393,6 +395,12 @@ public class TiScrollableView extends TiCompositeLayout
 				}
 			} else {
 				gallery.removeViewAt(index);
+				
+				// really for safety sake, you could just loop through all view resetting the position
+				// but for the sake of performance, just run over affected views for now
+				for (int i = index; i < gallery.getChildCount(); i++) {
+					((ViewWrapper) gallery.getChildAt (i)).position = i;
+				}
 			}
 		}
 	}
@@ -438,6 +446,9 @@ public class TiScrollableView extends TiCompositeLayout
 
 				if (fromWrapper != null && (fromWrapper != toWrapper)) {
 					fromWrapper.doDetachView();
+				}
+				if (showPagingControl) {
+					showPager();
 				}
 			}
 		}

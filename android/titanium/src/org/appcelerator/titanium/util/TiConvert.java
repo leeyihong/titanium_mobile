@@ -6,17 +6,21 @@
  */
 package org.appcelerator.titanium.util;
 
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.TimeZone;
 
 import org.appcelerator.kroll.KrollDict;
 import org.appcelerator.kroll.KrollObject;
 import org.appcelerator.kroll.KrollProxy;
 import org.appcelerator.titanium.TiBlob;
+import org.appcelerator.titanium.TiC;
 import org.appcelerator.titanium.TiDimension;
 import org.appcelerator.titanium.kroll.KrollCallback;
-import org.appcelerator.titanium.view.TiCompositeLayout;
+import org.appcelerator.titanium.view.Ti2DMatrix;
 import org.appcelerator.titanium.view.TiCompositeLayout.LayoutParams;
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -32,11 +36,10 @@ public class TiConvert
 	private static final boolean DBG = TiConfig.LOGD;
 
 	public static final String ASSET_URL = "file:///android_asset/"; // class scope on URLUtil
+	public static final String JSON_DATE_FORMAT = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'";
 
-	// Bundle
-
-	public static Object putInKrollDict(KrollDict d, String key, Object value)
-	{
+	// Bundle 
+	public static Object putInKrollDict(KrollDict d, String key, Object value) {
 		if (value instanceof String || value instanceof Number || value instanceof Boolean || value instanceof Date) {
 			d.put(key, value);
 		} else if (value instanceof KrollDict) {
@@ -109,19 +112,22 @@ public class TiConvert
 		} else {
 			throw new IllegalArgumentException("Unsupported property type " + value.getClass().getName());
 		}
-
 		return value;
 	}
+
 	// Color conversions
 	public static int toColor(String value) {
 		return TiColorHelper.parseColor(value);
 	}
+
 	public static int toColor(KrollDict d, String key) {
 		return toColor(d.getString(key));
 	}
+
 	public static ColorDrawable toColorDrawable(String value) {
 		return new ColorDrawable(toColor(value));
 	}
+
 	public static ColorDrawable toColorDrawable(KrollDict d, String key) {
 		return toColorDrawable(d.getString(key));
 	}
@@ -131,57 +137,61 @@ public class TiConvert
 		boolean dirty = false;
 		Object width = null;
 		Object height = null;
-		if (d.containsKey("size")) {
-			KrollDict size = (KrollDict)d.get("size");
-			width = size.get("width");
-			height = size.get("height");
+		if (d.containsKey(TiC.PROPERTY_SIZE)) {
+			KrollDict size = (KrollDict)d.get(TiC.PROPERTY_SIZE);
+			width = size.get(TiC.PROPERTY_WIDTH);
+			height = size.get(TiC.PROPERTY_HEIGHT);
 		}
-		if (d.containsKey("left")) {
-			layoutParams.optionLeft = toTiDimension(d, "left").getIntValue();
+		if (d.containsKey(TiC.PROPERTY_LEFT)) {
+			layoutParams.optionLeft = toTiDimension(d, TiC.PROPERTY_LEFT, TiDimension.TYPE_LEFT);
 			dirty = true;
 		}
-		if (d.containsKey("top")) {
-			layoutParams.optionTop = toTiDimension(d, "top").getIntValue();
+		if (d.containsKey(TiC.PROPERTY_TOP)) {
+			layoutParams.optionTop = toTiDimension(d, TiC.PROPERTY_TOP, TiDimension.TYPE_TOP);
 			dirty = true;
 		}
-		if (d.containsKey("right")) {
-			layoutParams.optionRight = toTiDimension(d, "right").getIntValue();
+		if (d.containsKey(TiC.PROPERTY_CENTER)) {
+			updateLayoutCenter(d.get(TiC.PROPERTY_CENTER), layoutParams);
 			dirty = true;
 		}
-		if (d.containsKey("bottom")) {
-			layoutParams.optionBottom = toTiDimension(d, "bottom").getIntValue();
+		if (d.containsKey(TiC.PROPERTY_RIGHT)) {
+			layoutParams.optionRight = toTiDimension(d, TiC.PROPERTY_RIGHT, TiDimension.TYPE_RIGHT);
 			dirty = true;
 		}
-		if (width != null || d.containsKey("width")) {
+		if (d.containsKey(TiC.PROPERTY_BOTTOM)) {
+			layoutParams.optionBottom = toTiDimension(d, TiC.PROPERTY_BOTTOM, TiDimension.TYPE_BOTTOM);
+			dirty = true;
+		}
+		if (width != null || d.containsKey(TiC.PROPERTY_WIDTH)) {
 			if (width == null)
 			{
-				width = d.get("width");
+				width = d.get(TiC.PROPERTY_WIDTH);
 			}
-			if (width == null || width.equals("auto")) {
-				layoutParams.optionWidth = TiCompositeLayout.NOT_SET;
+			if (width == null || width.equals(TiC.SIZE_AUTO)) {
+				layoutParams.optionWidth = null;
 				layoutParams.autoWidth = true;
 			} else {
-				layoutParams.optionWidth = toTiDimension(width).getIntValue();
+				layoutParams.optionWidth = toTiDimension(width, TiDimension.TYPE_WIDTH);
 				layoutParams.autoWidth = false;
 			}
 			dirty = true;
 		}
-		if (height != null || d.containsKey("height")) {
+		if (height != null || d.containsKey(TiC.PROPERTY_HEIGHT)) {
 			if (height == null)
 			{
-				height = d.get("height");
+				height = d.get(TiC.PROPERTY_HEIGHT);
 			}
-			if (height == null || height.equals("auto")) {
-				layoutParams.optionHeight = TiCompositeLayout.NOT_SET;
+			if (height == null || height.equals(TiC.SIZE_AUTO)) {
+				layoutParams.optionHeight = null;
 				layoutParams.autoHeight = true;
 			} else {
-				layoutParams.optionHeight = toTiDimension(height).getIntValue();
+				layoutParams.optionHeight = toTiDimension(height, TiDimension.TYPE_HEIGHT);
 				layoutParams.autoHeight = false;
 			}
 			dirty = true;
 		}
-		if (d.containsKey("zIndex")) {
-			Object zIndex = d.get("zIndex");
+		if (d.containsKey(TiC.PROPERTY_ZINDEX)) {
+			Object zIndex = d.get(TiC.PROPERTY_ZINDEX);
 			if (zIndex != null) {
 				layoutParams.optionZIndex = toInt(zIndex);
 			} else {
@@ -189,14 +199,37 @@ public class TiConvert
 			}
 			dirty = true;
 		}
-
+		if (d.containsKey(TiC.PROPERTY_TRANSFORM)) {
+			layoutParams.optionTransform = (Ti2DMatrix) d.get(TiC.PROPERTY_TRANSFORM);
+		}
 		return dirty;
 	}
 
-	// Values
-
-	public static boolean toBoolean(Object value)
+	public static void updateLayoutCenter(Object value, LayoutParams layoutParams)
 	{
+		if (value instanceof KrollDict) {
+			KrollDict center = (KrollDict) value;
+			if (center.containsKeyAndNotNull(TiC.PROPERTY_X)) {
+				layoutParams.optionCenterX = toTiDimension(center, TiC.PROPERTY_X, TiDimension.TYPE_CENTER_X);
+			} else {
+				layoutParams.optionCenterX = null;
+			}
+			if (center.containsKeyAndNotNull(TiC.PROPERTY_Y)) {
+				layoutParams.optionCenterY = toTiDimension(center, TiC.PROPERTY_Y, TiDimension.TYPE_CENTER_Y);
+			} else {
+				layoutParams.optionCenterY = null;
+			}
+		} else if (value != null) {
+			layoutParams.optionCenterX = toTiDimension(value, TiDimension.TYPE_CENTER_X);
+			layoutParams.optionCenterY = null;
+		} else {
+			layoutParams.optionCenterX = null;
+			layoutParams.optionCenterY = null;
+		}
+	}
+
+	// Values
+	public static boolean toBoolean(Object value) {
 		if (value instanceof Boolean) {
 			return (Boolean) value;
 		} else if (value instanceof String) {
@@ -263,35 +296,32 @@ public class TiConvert
 
 	public static String[] toStringArray(Object[] parts) {
 		String[] sparts = (parts != null ? new String[parts.length] : new String[0]);
-
 		if (parts != null) {
 			for (int i = 0; i < parts.length; i++) {
-				sparts[i] = (String) parts[i];
+				sparts[i] = parts[i] == null ? null : parts[i].toString();
 			}
 		}
 		return sparts;
 	}
 
 	// Dimensions
-	public static TiDimension toTiDimension(String value) {
-		return new TiDimension(value);
+	public static TiDimension toTiDimension(String value, int valueType) {
+		return new TiDimension(value, valueType);
 	}
 
-	public static TiDimension toTiDimension(Object value) {
+	public static TiDimension toTiDimension(Object value, int valueType) {
 		if (value instanceof Number) {
 			value = value.toString() + "px";
 		}
-		return toTiDimension((String) value);
+		return toTiDimension((String) value, valueType);
 	}
 	
-	public static TiDimension toTiDimension(KrollDict d, String key) {
-		return toTiDimension(d.get(key));
+	public static TiDimension toTiDimension(KrollDict d, String key, int valueType) {
+		return toTiDimension(d.get(key), valueType);
 	}
 
 	// URL
-	public static String toURL(Uri uri)
-	{
-		//TODO handle Ti URLs.
+	public static String toURL(Uri uri) {
 		String url = null;
 		if (uri.isRelative()) {
 			url = uri.toString();
@@ -311,10 +341,9 @@ public class TiConvert
 	public static KrollDict toErrorObject(int code, String msg) {
 		KrollDict d = new KrollDict(1);
 		KrollDict e = new KrollDict();
-		e.put("code", code);
-		e.put("message", msg);
-
-		d.put("error", e);
+		e.put(TiC.ERROR_PROPERTY_CODE, code);
+		e.put(TiC.ERROR_PROPERTY_MESSAGE, msg);
+		d.put(TiC.EVENT_PROPERTY_ERROR, e);
 		return d;
 	}
 
@@ -344,6 +373,8 @@ public class TiConvert
 					json.put(key, (String) o);
 				} else if (o instanceof Boolean) {
 					json.put(key, (Boolean) o);
+				} else if (o instanceof Date) {
+					json.put(key, toJSONString((Date)o));
 				} else if (o instanceof KrollDict) {
 					json.put(key, toJSON((KrollDict) o));
 				} else if (o.getClass().isArray()) {
@@ -376,6 +407,8 @@ public class TiConvert
 				ja.put((String) o);
 			} else if (o instanceof Boolean) {
 				ja.put((Boolean) o);
+			} else if (o instanceof Date) {
+				ja.put(toJSONString((Date)o));
 			} else if (o instanceof KrollDict) {
 				ja.put(toJSON((KrollDict) o));
 			} else if (o.getClass().isArray()) {
@@ -383,11 +416,19 @@ public class TiConvert
 			} else {
 				Log.w(LCAT, "Unsupported type " + o.getClass());
 			}
-    	}
-    	return ja;
-    }
-    
-    public static Date toDate(Object value) {
+		}
+		return ja;
+	}
+	
+	public static String toJSONString(Object value) {
+		if (value instanceof Date) {
+			DateFormat df = new SimpleDateFormat(JSON_DATE_FORMAT);
+			df.setTimeZone(TimeZone.getTimeZone("GMT"));
+			return df.format((Date)value);
+		} else return toString(value);
+	}
+
+	public static Date toDate(Object value) {
 		if (value instanceof Date) {
 			return (Date)value;
 		} else if (value instanceof Number) {

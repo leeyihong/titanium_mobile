@@ -14,9 +14,11 @@ import org.appcelerator.titanium.TiContext;
 import org.appcelerator.titanium.util.Log;
 import org.appcelerator.titanium.util.TiConfig;
 
+import android.app.Activity;
 import android.content.Context;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
+import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
@@ -222,6 +224,17 @@ public class NetworkModule extends KrollModule {
 			default : return "UNKNOWN";
 		}
 	}
+	
+	@Kroll.method @Kroll.topLevel
+	public String encodeURIComponent(String component) {
+		return Uri.encode(component);
+	}
+	
+	@Kroll.method @Kroll.topLevel
+	public String decodeURIComponent(String component) {
+		return Uri.decode(component);
+	}
+	
 	protected void manageConnectivityListener(boolean attach) {
 		if (attach) {
 			if (!isListeningForConnectivity) {
@@ -264,14 +277,14 @@ public class NetworkModule extends KrollModule {
 	}
 
 	@Override
-	public void onResume() {
-		super.onResume();
+	public void onResume(Activity activity) {
+		super.onResume(activity);
 		connectivityManager = getConnectivityManager();
 		manageConnectivityListener(true);
 	}
 
 	@Override
-	public void onPause() {
+	public void onPause(Activity activity) {
 		manageConnectivityListener(false);
 		connectivityManager = null;
 	}

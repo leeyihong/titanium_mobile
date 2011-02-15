@@ -28,7 +28,6 @@ import java.util.TreeSet;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
-import org.apache.http.entity.FileEntity;
 import org.appcelerator.titanium.TiContext;
 
 import android.content.Context;
@@ -37,6 +36,8 @@ import android.content.res.Resources;
 import android.graphics.Bitmap;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
+import android.net.Uri;
+import android.os.Environment;
 import android.webkit.URLUtil;
 
 public class TiFileHelper
@@ -236,12 +237,17 @@ public class TiFileHelper
 			return loadDrawable(path, report, checkForNinePatch);
 		}
 		
-		Drawable d = TiUIHelper.getResourceDrawable(context, path);
+		// getResourceDrawable wants a resolved url
+		String url = path;
+		if (!url.startsWith("file:")) {
+			url = context.resolveUrl(path);
+		}
+		Drawable d = TiUIHelper.getResourceDrawable(context, url);
 		if (d != null) {
 			return d;
 		}
 		
-		return loadDrawable(path, report, checkForNinePatch);
+		return loadDrawable(url, report, checkForNinePatch);
 		
 	}
 
@@ -251,7 +257,7 @@ public class TiFileHelper
 		InputStream is = null;
 		try
 		{
-			if (checkForNinePatch) {
+			if (checkForNinePatch && path != null && !URLUtil.isNetworkUrl(path)) {
 				if (path.endsWith(".png")) {
 					if (!path.endsWith(".9.png")) {
 						String apath = null;
@@ -604,7 +610,8 @@ public class TiFileHelper
 			}
 			else
 			{
-				f = new File("/sdcard/" + context.getPackageName());
+				File storageDir = Environment.getExternalStorageDirectory();
+				f = new File(storageDir, context.getPackageName());
 				if (!f.exists())
 				{
 					f.mkdirs();

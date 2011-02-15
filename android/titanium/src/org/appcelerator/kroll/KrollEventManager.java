@@ -16,12 +16,19 @@ import java.util.Map.Entry;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import org.appcelerator.titanium.TiC;
+import org.appcelerator.titanium.TiContext;
 import org.appcelerator.titanium.TiContext.OnLifecycleEvent;
+import org.appcelerator.titanium.TiContext.OnServiceLifecycleEvent;
 import org.appcelerator.titanium.bridge.OnEventListenerChange;
+import org.appcelerator.titanium.kroll.KrollCallback;
 import org.appcelerator.titanium.util.Log;
 import org.appcelerator.titanium.util.TiConfig;
 
-public class KrollEventManager implements OnLifecycleEvent {
+import android.app.Activity;
+import android.app.Service;
+
+public class KrollEventManager implements OnLifecycleEvent, OnServiceLifecycleEvent {
 	private static final String TAG = "KrollEventManager";
 	private static final boolean DBG = TiConfig.LOGD;
 	private static final boolean TRACE = TiConfig.LOGV;
@@ -33,7 +40,13 @@ public class KrollEventManager implements OnLifecycleEvent {
 	
 	public KrollEventManager(KrollProxy proxy) {
 		this.proxy = proxy;
-		proxy.getTiContext().addOnLifecycleEventListener(this);
+		TiContext tiContext = proxy.getTiContext();
+		
+		if (tiContext.isServiceContext()) {
+			tiContext.addOnServiceLifecycleEventListener(this);
+		} else {
+			tiContext.addOnLifecycleEventListener(this);
+		}
 		
 		this.eventChangeListeners = new ArrayList<WeakReference<OnEventListenerChange>>();
 		this.listenerIdGenerator = new AtomicInteger(0);
@@ -123,11 +136,11 @@ public class KrollEventManager implements OnLifecycleEvent {
 			this.listener = listener;
 		}
 
-		public boolean invoke(String eventName, KrollDict data) {
+		public boolean invoke(String eventName, KrollDict data, boolean asyncCallback) {
 			boolean invoked = false;
 			KrollProxy p = weakProxy.get();
 			if (p != null && listener != null) {
-				p.fireSingleEvent(eventName, listener, data);
+				p.fireSingleEvent(eventName, listener, data, asyncCallback);
 				invoked = true;
 			} else {
 				if (DBG) {
@@ -221,43 +234,49 @@ public class KrollEventManager implements OnLifecycleEvent {
 
 		return result;
 	}
-	
+
 	public boolean dispatchEvent(String eventName, KrollDict data)
+	{
+		return dispatchEvent(eventName, data, true);
+	}
+
+	public boolean dispatchEvent(String eventName, KrollDict data, boolean asyncCallback)
 	{
 		boolean dispatched = false;
 		if (eventName != null) {
 			Map<Integer, KrollListener> listeners = eventListeners.get(eventName);
-			if (listeners != null) {
-				if (data == null) {
-					data = new KrollDict();
-				}
-				if (!data.containsKey("type")) {
-					data.put("type", eventName);
-				}
-
-				Set<Entry<Integer, KrollListener>> listenerSet = listeners.entrySet();
-				synchronized(eventListeners) {
-					for(Entry<Integer, KrollListener> entry : listenerSet) {
-						KrollListener listener = entry.getValue();
-						if (proxy == null || (proxy != null && listener.isSameProxy(proxy))) {
-							boolean invoked = false;
-							try {
-								if (listener.weakProxy.get() != null) {
-									if (!data.containsKey("source")) {
-										data.put("source", listener.weakProxy.get());
-									}
-									invoked = listener.invoke(eventName, data);
-								}
-							} catch (Exception e) {
-								Log.e(TAG, "Error invoking listener with id " + entry.getKey() + " on eventName '" + eventName + "'", e);
-							}
-							dispatched = dispatched || invoked;
-						}
-					}
-				}
-			} else {
+			if (listeners == null) {
 				if(TRACE) {
 					Log.w(TAG, "No listeners for eventName: " + eventName);
+				}
+				return false;
+			}
+			
+			if (data == null) {
+				data = new KrollDict();
+			}
+			if (!data.containsKey(TiC.EVENT_PROPERTY_TYPE)) {
+				data.put(TiC.EVENT_PROPERTY_TYPE, eventName);
+			}
+
+			Set<Entry<Integer, KrollListener>> listenerSet = listeners.entrySet();
+			synchronized (eventListeners) {
+				for(Entry<Integer, KrollListener> entry : listenerSet) {
+					KrollListener listener = entry.getValue();
+					if (proxy == null || (proxy != null && listener.isSameProxy(proxy))) {
+						boolean invoked = false;
+						try {
+							if (listener.weakProxy.get() != null) {
+								if (!data.containsKey(TiC.EVENT_PROPERTY_SOURCE)) {
+									data.put(TiC.EVENT_PROPERTY_SOURCE, listener.weakProxy.get());
+								}
+								invoked = listener.invoke(eventName, data, asyncCallback);
+							}
+						} catch (Exception e) {
+							Log.e(TAG, "Error invoking listener with id " + entry.getKey() + " on eventName '" + eventName + "'", e);
+						}
+						dispatched = dispatched || invoked;
+					}
 				}
 			}
 		} else {
@@ -266,14 +285,14 @@ public class KrollEventManager implements OnLifecycleEvent {
 		return dispatched;
 	}
 
-	public void onDestroy() {
+	public void onDestroy(Activity activity) {
 		release();
 	}
 	
-	public void onPause() {}
-	public void onResume() {}
-	public void onStart() {}
-	public void onStop() {}
+	public void onPause(Activity activity) {}
+	public void onResume(Activity activity) {}
+	public void onStart(Activity activity) {}
+	public void onStop(Activity activity) {}
 	
 	public void release() {
 		if (eventChangeListeners != null) {
@@ -282,5 +301,11 @@ public class KrollEventManager implements OnLifecycleEvent {
 		if (eventListeners != null) {
 			eventListeners.clear();
 		}
+	}
+
+	@Override
+	public void onDestroy(Service service)
+	{
+		release();
 	}
 }

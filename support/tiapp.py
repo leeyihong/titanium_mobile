@@ -1,4 +1,4 @@
-0#!/usr/bin/env python
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 #
 # tiapp parser
@@ -58,11 +58,13 @@ class TiAppXML(object):
 			'url':'not specified',
 			'icon':None,
 			'analytics':'true',
-			'modules' : []
+			'modules' : [],
+			'plugins' : []
 		}
 		self.app_properties = {}
 		self.android = {}
 		self.android_manifest = {}
+		self.iphone = {}
 		
 		root = self.dom.documentElement
 		children = root.childNodes
@@ -75,17 +77,29 @@ class TiAppXML(object):
 				# multiple windows rooted by <windows>
 				elif child.nodeName == 'windows':
 					print "[WARN] windows in tiapp.xml no longer supported. this will be ignored"
-				# handle modules		
+				# handle modules
 				elif child.nodeName == 'modules':
 					for module in child.childNodes:
 						if module.nodeType == 1:
-							ver = module.getAttribute('version')
-							name = getText(module.childNodes)
-							self.properties['modules'].append({'name':name,'version':ver})
+							version = module.getAttribute('version')
+							platform = module.getAttribute('platform')
+							module_id = getText(module.childNodes)
+							self.properties['modules'].append({
+								'id': module_id,
+								'version': version,
+								'platform': platform
+							})
+				# handle plugins
+				elif child.nodeName == 'plugins':
+					for plugin in child.childNodes:
+						if plugin.nodeType == 1:
+							ver = plugin.getAttribute('version')
+							name = getText(plugin.childNodes)
+							self.properties['plugins'].append({'name':name,'version':ver})
 				elif child.nodeName == 'android':
 					self.parse_android(child)
-				elif child.nodeName == 'android:manifest':
-					self.parse_android_manifest(child)
+				elif child.nodeName == 'iphone':
+					self.parse_iphone(child)
 				elif child.nodeName == 'property':
 					name = child.getAttribute('name')
 					value = getText(child.childNodes)
@@ -106,23 +120,6 @@ class TiAppXML(object):
 			root.appendChild(self.dom.createTextNode("\n"))
 			self.dom.writexml(codecs.open(self.file, 'w+','utf-8','replace'), encoding="UTF-8")
 
-	def parse_android_manifest(self, node):
-		# android:manifest XML gets copied to the AndroidManifest.xml under the top level <manifest>
-		# anything under <application> will also get copied into the manifest's <application>
-		for child in node.childNodes:
-			if child.nodeType != child.ELEMENT_NODE: continue
-			if child.nodeName == 'application':
-				if 'application' not in self.android_manifest:
-					self.android_manifest['application'] = []
-				application = self.android_manifest['application']
-				application.extend([n for n in child.childNodes if n.nodeType == n.ELEMENT_NODE])
-				continue
-			
-			if 'manifest' not in self.android_manifest:
-				self.android_manifest['manifest'] = []
-			manifest = self.android_manifest['manifest']
-			manifest.append(child)
-	
 	def parse_android(self, node):
 		def get_text(node): return getText(node.childNodes)
 		
@@ -137,31 +134,168 @@ class TiAppXML(object):
 				if fn != None: value = fn(value)
 				map[attr] = value
 		
-		def parse_permissions(node):
-			permissions = lazy_init('permissions', [])
-			for permission in node.getElementsByTagName('permission'):
-				permissions.append(get_text(permission))
+		def parse_manifest(node):
+			# android:manifest XML gets copied to the AndroidManifest.xml under the top level <manifest>
+			# anything under <application> will also get copied into the manifest's <application>
+			for child in node.childNodes:
+				if child.nodeType != child.ELEMENT_NODE: continue
+				if child.nodeName == 'application':
+					if 'application' not in self.android_manifest:
+						self.android_manifest['application'] = []
+					application = self.android_manifest['application']
+					application.extend([n for n in child.childNodes if n.nodeType == n.ELEMENT_NODE])
+					self.android_manifest['application-attributes'] = child.attributes
+					continue
+				
+				if 'manifest' not in self.android_manifest:
+					self.android_manifest['manifest'] = []
+				manifest = self.android_manifest['manifest']
+				manifest.append(child)
+			if node.attributes.length > 0:
+				self.android_manifest['manifest-attributes'] = node.attributes
 
-		def parse_screens(node):
-			screens = lazy_init('screens', {})
-			add_attrs(screens, node, self.to_bool)
+		def get_url_based_classname(url, appendage):
+			parts = url.split('/')
+			if len(parts) == 0: return None
+			
+			start = 0
+			if parts[0] == "app:" and len(parts) >= 3:
+				start = 2
+			
+			classname = '_'.join(parts[start:])
+			if classname.endswith('.js'):
+				classname = classname[:-3]
+			
+			if len(classname) > 1:
+				classname = classname[0:1].upper() + classname[1:]
+			else: classname = classname.upper()
+			
+			escape_chars = ['\\', '/', ' ', '.', '$', '&', '@']
+			for escape_char in escape_chars:
+				classname = classname.replace(escape_char, '_')
+			return classname+appendage
+
+		def get_activity_classname(url):
+			return get_url_based_classname(url, 'Activity')
+
+		def get_service_classname(url):
+			return get_url_based_classname(url, 'Service')
 
 		def parse_activities(node):
 			activities = lazy_init('activities', {})
 			for activity_el in node.getElementsByTagName('activity'):
-				name = get_text(activity_el)
-				activity = lazy_init(name, {}, activities, set_name=True)
+				if activity_el.hasAttribute('url'):
+					url = activity_el.getAttribute('url')
+				else:
+					url = get_text(activity_el)
+				activity = lazy_init(url, {}, activities)
+				activity['url'] = url
 				add_attrs(activity, activity_el)
+				activity['classname'] = get_activity_classname(url)
+				for child in activity_el.childNodes:
+					if child.nodeType != child.ELEMENT_NODE:
+						continue
+					if 'nodes' not in activity:
+						activity['nodes'] = []
+					nodes = activity['nodes']
+					nodes.append(child)
 
 		def parse_services(node):
 			services = lazy_init('services', {})
 			for service_el in node.getElementsByTagName('service'):
-				name = get_text(service_el)
-				service = lazy_init(name, {}, services, set_name=True)
+				if service_el.hasAttribute('url'):
+					url = service_el.getAttribute('url')
+				else:
+					url = get_text(service_el)
+				service_type = 'standard'
+				if service_el.hasAttribute('type'):
+					service_type = service_el.getAttribute('type')
+				service = lazy_init(url, {}, services)
+				service['url'] = url
+				service['service_type'] = service_type
 				add_attrs(service, service_el)
+				service['classname'] = get_service_classname(url)
+				for child in service_el.childNodes:
+					if child.nodeType != child.ELEMENT_NODE:
+						continue
+					if 'nodes' not in service:
+						service['nodes'] = []
+					nodes = service['nodes']
+					nodes.append(child)
+
+		def parse_tool_api_level(node):
+			lazy_init('tool-api-level', get_text(node))
+
+
+		local_objects = locals()
+		parse_tags = ['services', 'activities', 'manifest', 'tool-api-level']
+		for child in node.childNodes:
+			if child.nodeName in parse_tags:
+				local_objects['parse_'+child.nodeName.replace('-', '_')](child)
+
+	def parse_iphone(self, node):
+		def translate_orientation(orientation):
+			info = orientation.split('.')
+			tokenMap = {'PORTRAIT':'UIInterfaceOrientationPortrait',
+						'UPSIDE_PORTRAIT':'UIInterfaceOrientationPortraitUpsideDown',
+						'LANDSCAPE_LEFT':'UIInterfaceOrientationLandscapeLeft',
+						'LANDSCAPE_RIGHT':'UIInterfaceOrientationLandscapeRight'}
+			
+			for token in tokenMap:
+				if token in info:
+					return tokenMap[token]
+			return None
+
+		def parse_orientations(node):
+			device = node.getAttribute('device').lower()
+			orientations = []
+			if (device == None):
+				print "[WARN] Orientations for unspecified device; assuming iphone"
+				device = 'iphone'
+			if device != 'iphone' and device != 'ipad':
+				print "[WARN] Unrecognized device %s for iphone, ignoring" % device
+				return
+			for child in node.childNodes:
+				if (child.nodeName == 'orientation'):
+					orientation = translate_orientation(getText(child.childNodes))
+					if orientation == None:
+						print "[WARN] Unrecognized orientation %s: Ignoring" % getText(node.childNodes)
+					else:
+						orientations.append(orientation)
+			self.iphone['orientations_'+device] = orientations
+		
+		def parse_backgroundModes(node):
+			valid_modes = ['audio', 'location', 'voip']
+			self.iphone['background'] = []
+			for child in node.childNodes:
+				if child.nodeName == 'mode':
+					mode = getText(child.childNodes)
+					if mode not in valid_modes:
+						print "[WARN] Invalid background mode %s: ignoring" % mode
+						continue
+					self.iphone['background'].append(mode)
+		
+		def parse_requires(node):
+			# Note that some of these are meaningless right now, but are
+			# included for The Future.
+			valid_reqs = ['telephony', 'wifi', 'sms', 'still-camera', 
+						  'auto-focus-camera', 'front-facing-camera',
+						  'camera-flash', 'video-camera', 'accelerometer',
+						  'gyroscope', 'location-services', 'gps', 'magnetometer',
+						  'gamekit', 'microphone', 'opengles-1', 'opengles-2',
+						  'armv6', 'armv7', 'peer-peer']
+			self.iphone['requires'] = []
+			for child in node.childNodes:
+				if child.nodeName == 'feature':
+					feature = getText(child.childNodes)
+					if feature not in valid_reqs:
+						print "[WARN] Invalid feature %s: ignoring" % feature
+						continue
+					self.iphone['requires'].append(feature)
+		
 		
 		local_objects = locals()
-		parse_tags = ['permissions', 'screens', 'activities', 'services']
+		parse_tags = ['orientations', 'backgroundModes', 'requires']
 		for child in node.childNodes:
 			if child.nodeName in parse_tags:
 				local_objects['parse_'+child.nodeName](child)
@@ -191,7 +325,7 @@ class TiAppXML(object):
 			n.setAttribute('name','ti.deploytype')
 			n.appendChild(self.dom.createTextNode(deploy_type))
 			root.appendChild(n)
-			
+		self.app_properties['ti.deploytype'] = deploy_type
 		self.dom.writexml(codecs.open(self.file, 'w+','utf-8','replace'), encoding="UTF-8")
 
 	def generate_infoplist(self,file,appid,family,project_dir,iphone_version):
@@ -221,7 +355,32 @@ class TiAppXML(object):
 				else:	
 					status_bar_style = '<string>UIStatusBarStyleDefault</string>'
 				self.infoplist_properties['UIStatusBarStyle']=status_bar_style
-			
+
+		for prop in self.iphone:
+			if prop == 'orientations_iphone' or prop == 'orientations_ipad':
+				propertyName = 'UISupportedInterfaceOrientations'
+				if prop == 'orientations_ipad':
+					propertyName += '~ipad'
+				propertyValue = '<array>\n'
+				for orientation in self.iphone[prop]:
+					propertyValue += "	<string>%s</string>\n" % orientation
+				propertyValue += '	</array>'
+				self.infoplist_properties[propertyName]=propertyValue
+			if prop == 'background':
+				propertyName = 'UIBackgroundModes'
+				propertyValue = '<array>\n'
+				for mode in self.iphone[prop]:
+					propertyValue += "	<string>%s</string>\n" % mode
+				propertyValue += '	</array>'
+				self.infoplist_properties[propertyName]=propertyValue
+			if prop == 'requires':
+				propertyName = 'UIRequiredDeviceCapabilities'
+				propertyValue = '<array>\n'
+				for feature in self.iphone[prop]:
+					propertyValue += "	<string>%s</string>\n" % feature
+				propertyValue += '	</array>'
+				self.infoplist_properties[propertyName]=propertyValue
+		
 		plist = codecs.open(file,'r','utf-8','replace').read()
 		plist = plist.replace('__APPICON__',icon)
 

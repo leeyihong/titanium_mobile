@@ -18,6 +18,7 @@
 #import "TiViewProxy.h"
 #import "TiBlob.h"
 #import "TiMediaAudioSession.h"
+#import "TiApp.h"
 
 /** 
  * Design Notes:
@@ -147,6 +148,10 @@ NSArray* moviePlayerKeys = nil;
 				   name:MPMoviePlayerPlaybackStateDidChangeNotification 
 				 object:movie];
 		
+		[nc addObserver:self selector:@selector(handleRotationNotification:)
+				   name:UIApplicationDidChangeStatusBarOrientationNotification
+				 object:nil];
+		
 		//FIXME: add to replace preload for 3.2
 		//MPMediaPlaybackIsPreparedToPlayDidChangeNotification
 	}
@@ -214,6 +219,15 @@ NSArray* moviePlayerKeys = nil;
 	return nil;
 }
 
+// TODO: Placing this in TiViewProxy would be better, but right now it screws up tableview.
+// So... move it there and fix tableview, when we have the time.
+-(void)relayout
+{
+	if (!CGRectEqualToRect(sandboxBounds, CGRectZero)) {
+		[super relayout];
+	}
+}
+
 -(void)viewWillAttach
 {
 	reallyAttached = YES;
@@ -239,9 +253,9 @@ NSArray* moviePlayerKeys = nil;
 	
 	if (movie != nil) {
 		UIView *background = [[self player] backgroundView];
-		for (UIView *view in [background subviews])
+		for (UIView *view_ in [background subviews])
 		{
-			[view removeFromSuperview];
+			[view_ removeFromSuperview];
 		}
 		[background addSubview:[proxy view]];
 	}
@@ -254,8 +268,10 @@ NSArray* moviePlayerKeys = nil;
 -(void)setInitialPlaybackTime:(id)time
 {
 	if (movie != nil) {
-		if ([TiUtils doubleValue:time] > 0) {
-			[[self player] performSelectorOnMainThread:@selector(setInitialPlaybackTime:) withObject:time waitUntilDone:NO];
+		CGFloat ourTime = [TiUtils doubleValue:time];
+		if (ourTime > 0) {
+			ENSURE_UI_THREAD_1_ARG(time);
+			[[self player] setInitialPlaybackTime:ourTime];
 		}
 	}
 	else {
@@ -969,14 +985,12 @@ NSArray* moviePlayerKeys = nil;
 			// get the window background views surface and place it on there
 			// it's already rotated and will give us better positioning 
 			// on the right surface area
-			UIView *subview = [[[[window subviews] objectAtIndex:0] subviews] objectAtIndex:0];
-			
-			CGRect bounds = [subview bounds];
-			
+			legacyWindowView = [[[[window subviews] objectAtIndex:0] subviews] objectAtIndex:0];
+			CGRect bounds = [legacyWindowView bounds];
 			for (TiViewProxy *proxy in views)
 			{
-				TiUIView *view = [proxy view];
-				[view insertIntoView:subview bounds:bounds];
+				[proxy setSandboxBounds:bounds];
+				[proxy insertIntoView:legacyWindowView bounds:bounds];
 			}
 		}
 	}
@@ -1010,6 +1024,14 @@ NSArray* moviePlayerKeys = nil;
 	}
 }
 
+-(void)handleRotationNotification:(NSNotification*)note
+{
+	// Only track if we're fullscreen
+	if (movie != nil) {
+		hasRotated = [[self player] isFullscreen];
+	}
+}
+
 -(void)handleFullscreenEnterNotification:(NSNotification*)note
 {
 	if ([self _hasListeners:@"fullscreen"])
@@ -1020,6 +1042,7 @@ NSArray* moviePlayerKeys = nil;
 		[event setObject:NUMBOOL(YES) forKey:@"entering"];
 		[self fireEvent:@"fullscreen" withObject:event];
 	}	
+	hasRotated = NO;
 }
 
 -(void)handleFullscreenExitNotification:(NSNotification*)note
@@ -1032,6 +1055,11 @@ NSArray* moviePlayerKeys = nil;
 		[event setObject:NUMBOOL(NO) forKey:@"entering"];
 		[self fireEvent:@"fullscreen" withObject:event];
 	}	
+	if (hasRotated) {
+		[[[TiApp app] controller] resizeView];
+		[[[TiApp app] controller] repositionSubviews];
+	}
+	hasRotated = NO;
 }
 
 -(void)handleSourceTypeNotification:(NSNotification*)note

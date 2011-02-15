@@ -6,7 +6,9 @@ import org.appcelerator.kroll.KrollModule;
 import org.appcelerator.kroll.annotations.Kroll;
 import org.appcelerator.titanium.TiContext;
 
-@Kroll.module
+import ti.modules.titanium.android.AndroidModule;
+
+@Kroll.module(parentModule=AndroidModule.class)
 public class CalendarModule extends KrollModule {
 	@Kroll.constant public static final int STATUS_TENTATIVE = EventProxy.STATUS_TENTATIVE;
 	@Kroll.constant public static final int STATUS_CONFIRMED = EventProxy.STATUS_CONFIRMED;
@@ -23,7 +25,7 @@ public class CalendarModule extends KrollModule {
 	@Kroll.constant public static final int METHOD_SMS = ReminderProxy.METHOD_SMS;
 	
 	@Kroll.constant public static final int STATE_DISMISSED = AlertProxy.STATE_DISMISSED;
-	@Kroll.constant public static final int STATE_FIERD = AlertProxy.STATE_FIRED;
+	@Kroll.constant public static final int STATE_FIRED = AlertProxy.STATE_FIRED;
 	@Kroll.constant public static final int STATE_SCHEDULED = AlertProxy.STATE_SCHEDULED;
 	
 	public CalendarModule(TiContext context) {

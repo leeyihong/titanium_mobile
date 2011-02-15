@@ -35,7 +35,7 @@ NSString* const DATA_IFACE = @"pdp_ip0";
 		name = [[theDevice systemName] retain];
 		version = [[theDevice systemVersion] retain];
 		processorCount = [[NSNumber numberWithInt:1] retain];
-		username = [theDevice name];
+		username = [[theDevice name] retain];
 		ostype = [@"32bit" retain];
 		
 		if ([TiUtils isIPad])
@@ -219,6 +219,14 @@ NSString* const DATA_IFACE = @"pdp_ip0";
 	}
 	
 	return [NSNumber numberWithBool:result];
+}
+
+
+-(NSNumber*)canOpenURL:(id)arg
+{
+	ENSURE_SINGLE_ARG(arg, NSString);
+	NSURL* url = [TiUtils toURL:arg proxy:self];
+	return NUMBOOL([[UIApplication sharedApplication] canOpenURL:url]);
 }
 
 -(PlatformModuleDisplayCapsProxy*)displayCaps

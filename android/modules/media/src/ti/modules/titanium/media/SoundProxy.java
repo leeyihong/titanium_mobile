@@ -7,8 +7,10 @@
 package ti.modules.titanium.media;
 
 import org.appcelerator.kroll.KrollDict;
+import org.appcelerator.kroll.KrollInvocation;
 import org.appcelerator.kroll.KrollProxy;
 import org.appcelerator.kroll.annotations.Kroll;
+import org.appcelerator.titanium.TiC;
 import org.appcelerator.titanium.TiContext;
 import org.appcelerator.titanium.TiContext.OnLifecycleEvent;
 import org.appcelerator.titanium.util.Log;
@@ -16,6 +18,7 @@ import org.appcelerator.titanium.util.TiConfig;
 import org.appcelerator.titanium.util.TiConvert;
 
 import ti.modules.titanium.filesystem.FileProxy;
+import android.app.Activity;
 
 @Kroll.proxy(creatableInModule=MediaModule.class)
 public class SoundProxy extends KrollProxy
@@ -36,23 +39,36 @@ public class SoundProxy extends KrollProxy
 	@Override
 	public void handleCreationDict(KrollDict options) {
 		super.handleCreationDict(options);
-		if (options.containsKey("url")) {
-			setProperty("url", getTiContext().resolveUrl(null, TiConvert.toString(options, "url")));
-		} else if (options.containsKey("sound")) {
-			FileProxy fp = (FileProxy) options.get("sound");
+		if (options.containsKey(TiC.PROPERTY_URL)) {
+			setProperty(TiC.PROPERTY_URL, getTiContext().resolveUrl(null, TiConvert.toString(options, TiC.PROPERTY_URL)));
+		} else if (options.containsKey(TiC.PROPERTY_SOUND)) {
+			FileProxy fp = (FileProxy) options.get(TiC.PROPERTY_SOUND);
 			if (fp != null) {
 				String url = fp.getNativePath();
-				setProperty("url", url);
+				setProperty(TiC.PROPERTY_URL, url);
 			}
 		}
-		if (options.containsKey("allowBackground")) {
-			setProperty("allowBackground", options.get("allowBackground"));
+		if (options.containsKey(TiC.PROPERTY_ALLOW_BACKGROUND)) {
+			setProperty(TiC.PROPERTY_ALLOW_BACKGROUND, options.get(TiC.PROPERTY_ALLOW_BACKGROUND));
 		}
 		if (DBG) {
-			Log.i(LCAT, "Creating sound proxy for url: " + TiConvert.toString(getProperty("url")));
+			Log.i(LCAT, "Creating sound proxy for url: " + TiConvert.toString(getProperty(TiC.PROPERTY_URL)));
+		}
+	}
+	
+	@Kroll.getProperty
+	public String getUrl() {
+		return TiConvert.toString(getProperty(TiC.PROPERTY_URL));
+	}
+	
+	@Kroll.setProperty
+	public void setUrl(KrollInvocation kroll, String url) {
+		if (url != null) {
+			setProperty(TiC.PROPERTY_URL, kroll.getTiContext().resolveUrl(null, TiConvert.toString(url)));
 		}
 	}
 
+	@Kroll.method @Kroll.getProperty
 	public boolean isPlaying() {
 		TiSound s = getSound();
 		if (s != null) {
@@ -61,6 +77,7 @@ public class SoundProxy extends KrollProxy
 		return false;
 	}
 
+	@Kroll.method @Kroll.getProperty
 	public boolean isPaused() {
 		TiSound s = getSound();
 		if (s != null) {
@@ -69,6 +86,7 @@ public class SoundProxy extends KrollProxy
 		return false;
 	}
 
+	@Kroll.method @Kroll.getProperty
 	public boolean isLooping() {
 		TiSound s = getSound();
 		if (s != null) {
@@ -76,15 +94,8 @@ public class SoundProxy extends KrollProxy
 		}
 		return false;
 	}
-
-	public boolean getLooping() {
-		TiSound s = getSound();
-		if (s != null) {
-			return s.isLooping();
-		}
-		return false;
-	}
-
+	
+	@Kroll.method @Kroll.setProperty
 	public void setLooping(boolean looping) {
 		TiSound s = getSound();
 		if (s != null) {
@@ -92,11 +103,13 @@ public class SoundProxy extends KrollProxy
 		}
 	}
 
+	@Kroll.method
 	// An alias for play so that sound can be used instead of an audioplayer
 	public void start() {
 		play();
 	}
 
+	@Kroll.method
 	public void play() {
 		TiSound s = getSound();
 		if (s != null) {
@@ -104,6 +117,7 @@ public class SoundProxy extends KrollProxy
 		}
 	}
 
+	@Kroll.method
 	public void pause() {
 		TiSound s = getSound();
 		if (s != null) {
@@ -111,6 +125,7 @@ public class SoundProxy extends KrollProxy
 		}
 	}
 
+	@Kroll.method
 	public void reset() {
 		TiSound s = getSound();
 		if (s != null) {
@@ -118,6 +133,7 @@ public class SoundProxy extends KrollProxy
 		}
 	}
 
+	@Kroll.method
 	public void release() {
 		TiSound s = getSound();
 		if (s != null) {
@@ -126,10 +142,12 @@ public class SoundProxy extends KrollProxy
 		}
 	}
 
+	@Kroll.method
 	public void destroy() {
 		release();
 	}
 
+	@Kroll.method
 	public void stop() {
 		TiSound s = getSound();
 		if (s != null) {
@@ -137,6 +155,7 @@ public class SoundProxy extends KrollProxy
 		}
 	}
 
+	@Kroll.method @Kroll.getProperty
 	public int getDuration() {
 		TiSound s = getSound();
 		if (s != null) {
@@ -146,6 +165,7 @@ public class SoundProxy extends KrollProxy
 		return 0;
 	}
 
+	@Kroll.method @Kroll.getProperty
 	public int getTime() {
 		TiSound s = getSound();
 		if (s != null) {
@@ -154,6 +174,7 @@ public class SoundProxy extends KrollProxy
 		return 0;
 	}
 
+	@Kroll.method @Kroll.setProperty
 	public void setTime(Object pos) {
 		if (pos != null) {
 			TiSound s = getSound();
@@ -162,6 +183,7 @@ public class SoundProxy extends KrollProxy
 			}
 		}
 	}
+	
 	protected TiSound getSound()
 	{
 		if (snd == null) {
@@ -173,16 +195,16 @@ public class SoundProxy extends KrollProxy
 
 	private boolean allowBackground() {
 		boolean allow = false;
-		if (hasProperty("allowBackground")) {
-			allow = TiConvert.toBoolean(getProperty("allowBackground"));
+		if (hasProperty(TiC.PROPERTY_ALLOW_BACKGROUND)) {
+			allow = TiConvert.toBoolean(getProperty(TiC.PROPERTY_ALLOW_BACKGROUND));
 		}
 		return allow;
 	}
 
-	public void onStart() {
+	public void onStart(Activity activity) {
 	}
 
-	public void onResume() {
+	public void onResume(Activity activity) {
 		if (!allowBackground()) {
 			if (snd != null) {
 				snd.onResume();
@@ -190,7 +212,7 @@ public class SoundProxy extends KrollProxy
 		}
 	}
 
-	public void onPause() {
+	public void onPause(Activity activity) {
 		if (!allowBackground()) {
 			if (snd != null) {
 				snd.onPause();
@@ -198,10 +220,10 @@ public class SoundProxy extends KrollProxy
 		}
 	}
 
-	public void onStop() {
+	public void onStop(Activity activity) {
 	}
 
-	public void onDestroy() {
+	public void onDestroy(Activity activity) {
 		if (snd != null) {
 			snd.onDestroy();
 		}

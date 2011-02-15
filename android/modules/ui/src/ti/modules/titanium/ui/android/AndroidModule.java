@@ -6,18 +6,25 @@
  */
 package ti.modules.titanium.ui.android;
 
+import org.appcelerator.kroll.KrollInvocation;
 import org.appcelerator.kroll.KrollModule;
 import org.appcelerator.kroll.annotations.Kroll;
 import org.appcelerator.titanium.TiContext;
+import org.appcelerator.titanium.util.TiUIHelper;
 import org.appcelerator.titanium.view.TiUIView;
 
 import ti.modules.titanium.ui.UIModule;
+import android.app.Activity;
+import android.content.Intent;
 import android.text.util.Linkify;
+import android.util.Log;
 import android.view.WindowManager;
 
 @Kroll.module(parentModule=UIModule.class)
 public class AndroidModule extends KrollModule
 {
+	private static final String LCAT = "UIAndroidModule";
+	
 	@Kroll.constant public static final int SOFT_INPUT_ADJUST_PAN = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN;
 	@Kroll.constant public static final int SOFT_INPUT_ADJUST_RESIZE = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE;
 	@Kroll.constant public static final int SOFT_INPUT_ADJUST_UNSPECIFIED = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_UNSPECIFIED;
@@ -38,8 +45,35 @@ public class AndroidModule extends KrollModule
 	@Kroll.constant public static final int LINKIFY_PHONE_NUMBERS = Linkify.PHONE_NUMBERS;
 	@Kroll.constant public static final int LINKIFY_WEB_URLS = Linkify.WEB_URLS;
 	
+	@Kroll.constant public static final int SWITCH_STYLE_CHECKBOX     = 0;
+	@Kroll.constant public static final int SWITCH_STYLE_TOGGLEBUTTON = 1;
+	
 	public AndroidModule(TiContext tiContext) 
 	{
 		super(tiContext);
+	}
+	
+	@Kroll.method
+	public void openPreferences(KrollInvocation kroll, @Kroll.argument(optional=true) String prefsName)
+	{
+		Activity act = kroll.getActivity();
+		if (act != null) {
+			
+			Intent i = new Intent(act, TiPreferencesActivity.class);
+			if (prefsName != null) {
+				i.putExtra("prefsName", prefsName);
+			}
+			act.startActivity(i);
+		} else {
+			Log.w(LCAT, "Unable to open preferences. Activity is null");
+		}
+	}
+	
+	@Kroll.method
+	public void hideSoftKeyboard(KrollInvocation invocation) {
+		Activity a = invocation.getActivity();
+		if (a != null) {
+			TiUIHelper.showSoftKeyboard(a.getWindow().getDecorView(), false);
+		}
 	}
 }

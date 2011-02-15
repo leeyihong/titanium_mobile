@@ -38,8 +38,12 @@ import org.json.simple.JSONValue;
 
 import freemarker.template.Configuration;
 import freemarker.template.DefaultObjectWrapper;
+import freemarker.template.SimpleNumber;
 import freemarker.template.Template;
 import freemarker.template.TemplateException;
+import freemarker.template.TemplateMethodModel;
+import freemarker.template.TemplateModel;
+import freemarker.template.TemplateModelException;
 
 @SupportedAnnotationTypes({
 	KrollBindingGenerator.Kroll_proxy,
@@ -547,14 +551,47 @@ public class KrollBindingGenerator extends AbstractProcessor {
 		
 	}
 	
-	protected Map<String, Object> getParentModule(Map<String, Object> proxy) {
+	protected String getParentModuleClass(Map<String, Object> proxy) {
 		if (properties.containsKey("modules")) {
-			Map<String, Object> modules = (Map<String, Object>) properties.get("modules");
+			String moduleClass = null;
+			
 			if (proxy.containsKey("creatableInModule")) {
-				return (Map<String, Object>) modules.get(proxy.get("creatableInModule"));
+				moduleClass = (String) proxy.get("creatableInModule");
 			} else if (proxy.containsKey("parentModule")) {
-				return (Map<String, Object>) modules.get(proxy.get("parentModule"));
+				moduleClass = (String) proxy.get("parentModule");
 			}
+			return moduleClass;
+		}
+		return null;
+	}
+		
+	protected Map<String, Object> getParentModule(Map<String, Object> proxy) {
+		String parentModuleClass = getParentModuleClass(proxy);
+		if (parentModuleClass != null) {
+			Map<String, Object> modules = (Map<String, Object>) properties.get("modules");
+			return (Map<String, Object>) modules.get(parentModuleClass);
+		}
+		return null;
+	}
+	
+	protected String findParentModuleName(Map<String, Object> proxy) {
+		// Parent module name wasn't found because it exists in another source round (probably another module)
+		// We can manually pull the annotation name here instead
+		String parentModuleClass = getParentModuleClass(proxy);
+		if (parentModuleClass != null) {
+			TypeElement type = processingEnv.getElementUtils().getTypeElement(parentModuleClass);
+			HashMap<String, Object> moduleParams = utils.getAnnotationParams(type, Kroll_module);
+			
+			String apiName = parentModuleClass.substring(parentModuleClass.lastIndexOf(".")+1);
+			int moduleIdx;
+			if ((moduleIdx = apiName.indexOf("Module")) != -1) {
+				apiName = apiName.substring(0, moduleIdx);
+			}
+			
+			if (moduleParams.containsKey("name") && !moduleParams.get("name").equals(DEFAULT_NAME)) {
+				apiName = (String)moduleParams.get("name");
+			}
+			return apiName;
 		}
 		return null;
 	}
@@ -567,7 +604,11 @@ public class KrollBindingGenerator extends AbstractProcessor {
 			if (parentProxy == null) {
 				break;
 			}
-			fullAPIName = parentProxy.get("apiName") + "." + fullAPIName;
+			String apiName = (String) parentProxy.get("apiName");
+			if (apiName == null) {
+				apiName = findParentModuleName(childProxy);
+			}
+			fullAPIName = apiName + "." + fullAPIName;
 			childProxy = parentProxy;
 		}
 		proxy.put("fullAPIName", fullAPIName);
@@ -595,13 +636,22 @@ public class KrollBindingGenerator extends AbstractProcessor {
 	
 	protected void generateProxies() {
 		Map<String,Object> proxies = (Map<String,Object>) properties.get("proxies");
-		
+		HashCodeMethod hashCodeMethod = new HashCodeMethod();
 		for (String proxyName : proxies.keySet()) {
 			Map<Object,Object> proxy = (Map<Object,Object>)proxies.get(proxyName);
 			HashMap<Object,Object> root = new HashMap<Object,Object>(proxy);
 			root.put("allModules", properties.get("modules"));
+			root.put("hashCode", hashCodeMethod);
 			
 			saveTypeTemplate(bindingTemplate, proxy.get("packageName")+"."+proxy.get("genClassName"), root);
+		}
+	}
+
+	protected class HashCodeMethod implements TemplateMethodModel {
+		@SuppressWarnings("rawtypes")
+		public TemplateModel exec(List args) throws TemplateModelException {
+			String arg = args.get(0).toString();
+			return new SimpleNumber(arg.hashCode());
 		}
 	}
 }

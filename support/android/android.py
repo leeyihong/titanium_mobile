@@ -13,6 +13,7 @@ from os.path import join, splitext, split, exists
 from shutil import copyfile
 from androidsdk import AndroidSDK
 from compiler import Compiler
+import bindings
 
 template_dir = os.path.abspath(os.path.dirname(sys._getframe(0).f_code.co_filename))
 module_dir = os.path.join(os.path.dirname(template_dir), 'module')
@@ -59,7 +60,7 @@ class Android(object):
 		# android requires at least one dot in packageid
 		if len(re.findall(r'\.',myid))==0:
 			myid = 'com.%s' % myid
-		
+
 		self.id = myid
 		self.sdk = sdk
 
@@ -134,44 +135,37 @@ class Android(object):
 			if value == None: value = ""
 			self.app_properties[name] = {"type": type, "value": value}
 	
-	def get_module_bindings(self, jar):
-		bindings_path = None
-		for name in jar.namelist():
-			if name.endswith('.json') and name.startswith('org/appcelerator/titanium/bindings/'):
-				bindings_path = name
-				break
-		
-		if bindings_path is None: return None
-		
-		return simplejson.loads(jar.read(bindings_path))
+	def generate_activities(self, app_package_dir):
+		if not 'activities' in self.tiapp.android: return
+		for key in self.tiapp.android['activities'].keys():
+			activity = self.tiapp.android['activities'][key]
+			print '[DEBUG] generating activity class: ' + activity['classname']
+			
+			self.render(template_dir, 'JSActivity.java', app_package_dir, activity['classname']+'.java', activity=activity)
 	
-	def build_modules_info(self, resources_dir, app_bin_dir):
-		compiler = Compiler(self.tiapp, resources_dir, self.java, app_bin_dir, os.path.dirname(app_bin_dir))
-		compiler.compile(compile_bytecode=False)
-		self.app_modules = []
-		template_dir = os.path.dirname(sys._getframe(0).f_code.co_filename)
-		android_modules_dir = os.path.abspath(os.path.join(template_dir, 'modules'))
-		
-		modules = {}
-		for jar in os.listdir(android_modules_dir):
-			if not jar.endswith('.jar'): continue
-			
-			module_path = os.path.join(android_modules_dir, jar)
-			module_jar = zipfile.ZipFile(module_path)
-			module_bindings = self.get_module_bindings(module_jar)
-			if module_bindings is None: continue
-			
-			for module_class in module_bindings['modules'].keys():
-				full_api_name = module_bindings['proxies'][module_class]['proxyAttrs']['fullAPIName']
-				modules[module_class] = module_bindings['modules'][module_class]
-				modules[module_class]['fullAPIName'] = full_api_name
+	def generate_services(self, app_package_dir):
+		if not 'services' in self.tiapp.android: return
+		for key in self.tiapp.android['services'].keys():
+			service = self.tiapp.android['services'][key]
+			service_type = service['service_type']
+			print '[DEBUG] generating service type "%s", class "%s"' %(service_type, service['classname'])
+			if service_type == 'interval':
+				self.render(template_dir, 'JSIntervalService.java', app_package_dir, service['classname']+'.java', service=service)
+			else:
+				self.render(template_dir, 'JSService.java', app_package_dir, service['classname']+'.java', service=service)
 
+	def build_modules_info(self, resources_dir, app_bin_dir):
+		self.app_modules = []
+		(modules, external_child_modules) = bindings.get_all_module_bindings()
+		
+		compiler = Compiler(self.tiapp, resources_dir, self.java, app_bin_dir, os.path.dirname(app_bin_dir))
+		compiler.compile(compile_bytecode=False, info_message=None)
 		for module in compiler.modules:
-			bindings = []
+			module_bindings = []
 			# TODO: we should also detect module properties
 			for method in compiler.module_methods:
 				if method.lower().startswith(module+'.') and '.' not in method:
-					bindings.append(method[len(module)+1:])
+					module_bindings.append(method[len(module)+1:])
 			
 			module_class = None
 			module_apiName = None
@@ -182,22 +176,29 @@ class Android(object):
 					break
 			
 			if module_apiName == None: continue # module wasn't found
-			self.app_modules.append({
-				'api_name': module_apiName,
-				'class_name': module_class,
-				'bindings': bindings
-			})
+			if '.' not in module:
+				ext_modules = []
+				if module_class in external_child_modules:
+					for child_module in external_child_modules[module_class]:
+						if child_module['fullAPIName'].lower() in compiler.modules:
+							ext_modules.append(child_module)
+				self.app_modules.append({
+					'api_name': module_apiName,
+					'class_name': module_class,
+					'bindings': module_bindings,
+					'external_child_modules': ext_modules
+				})
 		
 		# discover app modules
 		detector = ModuleDetector(self.project_dir)
-		missing, detected_modules = detector.find_app_modules(self.tiapp)
+		missing, detected_modules = detector.find_app_modules(self.tiapp, 'android')
 		for missing_module in missing: print '[WARN] Couldn\'t find app module: %s' % missing_module['name']
 		
 		self.custom_modules = []
 		for module in detected_modules:
 			if module.jar == None: continue
 			module_jar = zipfile.ZipFile(module.jar)
-			module_bindings = self.get_module_bindings(module_jar)
+			module_bindings = bindings.get_module_bindings(module_jar)
 			if module_bindings is None: continue
 			
 			for module_class in module_bindings['modules'].keys():
@@ -259,10 +260,17 @@ class Android(object):
 		self.render(template_dir, 'App.java', app_package_dir, self.config['classname'] + 'Application.java',
 			app_modules = self.app_modules, custom_modules = self.custom_modules)
 		self.render(template_dir, 'Activity.java', app_package_dir, self.config['classname'] + 'Activity.java')
+		self.generate_activities(app_package_dir)
+		self.generate_services(app_package_dir)
 		self.render(template_dir, 'classpath', app_dir, '.classpath')
 		self.render(template_dir, 'project', app_dir, '.project')
 		self.render(template_dir, 'default.properties', app_dir, 'default.properties')
-		self.render(template_dir, 'gitignore', app_dir, '.gitignore')
+		# Don't override a pre-existing .gitignore in case users have their own preferences
+		# for what should be in it. (LH #2446)
+		if not os.path.exists(os.path.join(app_dir, '.gitignore')):
+			self.render(template_dir, 'gitignore', app_dir, '.gitignore')
+		else:
+			print "[TRACE] Skipping copying gitignore -> .gitignore because already exists"
 
 		android_project_resources = os.path.join(project_dir,'Resources','android')
 

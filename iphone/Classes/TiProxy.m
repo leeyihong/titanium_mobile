@@ -88,7 +88,7 @@ void DoProxyDelegateChangedValuesWithProxy(UIView<TiProxyDelegate> * target, NSS
 		}
 		else
 		{
-			[target performSelectorOnMainThread:sel withObject:newValue waitUntilDone:NO modes:[NSArray arrayWithObject:NSRunLoopCommonModes]];
+			[target performSelectorOnMainThread:sel withObject:newValue waitUntilDone:YES modes:[NSArray arrayWithObject:NSRunLoopCommonModes]];
 		}
 	}
 }
@@ -272,15 +272,9 @@ void DoProxyDelegateReadValuesWithKeysFromProxy(UIView<TiProxyDelegate> * target
 	executionContext = context; //don't retain
 }
 
--(void)_configurationSet
-{
-	// for subclass
-}
-
 -(void)_initWithProperties:(NSDictionary*)properties
 {
 	[self setValuesForKeysWithDictionary:properties];
-	[self _configurationSet];
 }
 
 -(void)_initWithCallback:(KrollCallback*)callback
@@ -421,7 +415,7 @@ void DoProxyDelegateReadValuesWithKeysFromProxy(UIView<TiProxyDelegate> * target
 
 -(TiProxy*)currentWindow
 {
-	return [[self pageContext] preloadForKey:@"currentWindow"];
+	return [[self pageContext] preloadForKey:@"currentWindow" name:@"UI"];
 }
 
 -(NSURL*)_baseURL

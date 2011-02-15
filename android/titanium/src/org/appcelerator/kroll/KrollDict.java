@@ -65,6 +65,17 @@ public class KrollDict
 	public boolean containsKeyAndNotNull(String key) {
 		return containsKey(key) && get(key) != null;
 	}
+
+	public boolean containsKeyStartingWith(String keyStartsWith) {
+		if (keySet() != null) { 
+			for (String key : keySet()) {
+				if (key.startsWith(keyStartsWith)) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
 	
 	public boolean getBoolean(String key) {
 		return KrollConverter.toBoolean(get(key));
@@ -80,7 +91,7 @@ public class KrollDict
 	}
 
 	public String getString(String key) {
-		return (String) get(key);
+		return KrollConverter.toString(get(key));
 	}
 
 	public String optString(String key, String defalt) {

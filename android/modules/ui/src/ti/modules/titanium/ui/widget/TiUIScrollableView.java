@@ -40,8 +40,12 @@ public class TiUIScrollableView extends TiUIView
 		if (d.containsKey("views")) {
 			getView().setViews(d.get("views"));
 		} 
-		if (d.containsKey("showPagingControls")) {
-			getView().setShowPagingControl(TiConvert.toBoolean(d, "showPagingControls"));
+		if (d.containsKey("showPagingControl")) {
+			boolean showPager = TiConvert.toBoolean(d, "showPagingControl");
+			getView().setShowPagingControl(showPager);
+			if (showPager) {
+				showPager();
+			}
 		} 
 		if (d.containsKey("currentPage")) {
 			setCurrentPage(TiConvert.toInt(d, "currentPage"));
@@ -80,9 +84,13 @@ public class TiUIScrollableView extends TiUIView
 
 	public void showPager()
 	{
-		boolean showPagingControl = TiConvert.toBoolean(proxy.getProperty("showPagingControl"));
-		if (showPagingControl) {
-			getView().showPager();
+		Object showPagingControlProperty = proxy.getProperty("showPagingControl");
+
+		if (showPagingControlProperty != null) {
+			boolean showPagingControl = TiConvert.toBoolean(showPagingControlProperty);
+			if (showPagingControl) {
+				getView().showPager();
+			}
 		}
 	}
 

@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import org.appcelerator.kroll.KrollDict;
 import org.appcelerator.kroll.annotations.Kroll;
 import org.appcelerator.titanium.TiActivity;
+import org.appcelerator.titanium.TiC;
 import org.appcelerator.titanium.TiContext;
 import org.appcelerator.titanium.proxy.TiWindowProxy;
 import org.appcelerator.titanium.util.AsyncResult;
@@ -47,7 +48,7 @@ public class TabGroupProxy extends TiWindowProxy
 	private ArrayList<TabProxy> tabs;
 	private WeakReference<TiTabActivity> weakActivity;
 	String windowId;
-	Object initialActiveTab;
+	Object initialActiveTab; // this can be index or tab object
 
 	public TabGroupProxy(TiContext tiContext) {
 		super(tiContext);
@@ -99,6 +100,13 @@ public class TabGroupProxy extends TiWindowProxy
 		return tps;
 	}
 
+
+	public ArrayList<TabProxy> getTabList()
+	{
+		return tabs;
+	}
+
+
 	@Kroll.method
 	public void addTab(TabProxy tab)
 	{
@@ -110,20 +118,16 @@ public class TabGroupProxy extends TiWindowProxy
 			handleAddTab(tab);
 			return;
 		}
-
-		AsyncResult result = new AsyncResult(tab);
-		Message msg = getUIHandler().obtainMessage(MSG_ADD_TAB, result);
-		msg.sendToTarget();
-		result.getResult(); // Don't care about return, just synchronization.
+		sendBlockingUiMessage(MSG_ADD_TAB, tab);
 	}
 
 	private void handleAddTab(TabProxy tab)
 	{
-		String tag = TiConvert.toString(tab.getProperty("tag"));
+		String tag = TiConvert.toString(tab.getProperty(TiC.PROPERTY_TAG));
 		if (tag == null) {
-			String title = TiConvert.toString(tab.getProperty("title"));
+			String title = TiConvert.toString(tab.getProperty(TiC.PROPERTY_TITLE));
 			if (title == null) {
-				String icon = TiConvert.toString(tab.getProperty("icon"));
+				String icon = TiConvert.toString(tab.getProperty(TiC.PROPERTY_ICON));
 				if (icon == null) {
 					tag = tab.toString();
 				} else {
@@ -133,9 +137,12 @@ public class TabGroupProxy extends TiWindowProxy
 				tag = title;
 			}
 			
-			tab.setProperty("tag", tag, false); // store in proxy
+			tab.setProperty(TiC.PROPERTY_TAG, tag, false); // store in proxy
 		}
-		
+
+		if (tabs.size() == 0) {
+			initialActiveTab = tab;
+		}
 		tabs.add(tab);
 
 		if (peekView() != null) {
@@ -152,16 +159,16 @@ public class TabGroupProxy extends TiWindowProxy
 				Log.w(LCAT, "Could not add tab because tab activity no longer exists");
 			}
 		}
-		String title = (String) tab.getProperty("title");
-		String icon = (String) tab.getProperty("icon");
-		String tag = (String) tab.getProperty("tag");
+		String title = (String) tab.getProperty(TiC.PROPERTY_TITLE);
+		String icon = (String) tab.getProperty(TiC.PROPERTY_ICON);
+		String tag = (String) tab.getProperty(TiC.PROPERTY_TAG);
 
 		if (title == null) {
 			title = "";
 		}
 		
 		tab.setTabGroup(this);
-		final WindowProxy vp = (WindowProxy) tab.getProperty("window");
+		final WindowProxy vp = (WindowProxy) tab.getProperty(TiC.PROPERTY_WINDOW);
 		vp.setTabGroupProxy(this);
 		vp.setTabProxy(tab);
 
@@ -183,35 +190,70 @@ public class TabGroupProxy extends TiWindowProxy
 
 			tg.addTab(tspec);
 		}
-
 	}
 
 	@Kroll.method
-	public void removeTab(TabProxy tab)
-	{
+	public void removeTab(TabProxy tab) { }
+	public void handleRemoveTab(TabProxy tab) { }
 
-	}
-
-	public void handleRemoveTab(TabProxy tab) {
-
-	}
-	
 	@Kroll.setProperty(runOnUiThread=true) @Kroll.method(runOnUiThread=true)
 	public void setActiveTab(Object tab) {
 		if (peekView() != null) {
 			TiUITabGroup tg = (TiUITabGroup) peekView();
 			tg.changeActiveTab(tab);
+		} else {
+			// handles the case where the setActiveTab is called before the TabGroup has finished opening
+			// and thus would prevent the initial tab from being set
+			initialActiveTab = tab;
 		}
 	}
-	
+
+	@Kroll.getProperty @Kroll.method
+	public TabProxy getActiveTab() {
+		TabProxy activeTab = null;
+		
+		if (peekView() != null) {
+			TiUITabGroup tg = (TiUITabGroup) peekView();
+			int activeTabIndex = tg.getActiveTab();
+
+			if (activeTabIndex < 0) {
+				Log.e(LCAT, "unable to get active tab, invalid index returned: " + activeTabIndex);
+			} else if (activeTabIndex >= tabs.size()) {
+				Log.e(LCAT, "unable to get active tab, index is larger than tabs array: " + activeTabIndex);
+			}
+			activeTab = tabs.get(activeTabIndex);
+		} else {
+			if (initialActiveTab instanceof Number) {
+				int tabsIndex = TiConvert.toInt(initialActiveTab);
+				if (tabsIndex >= tabs.size()) {
+					activeTab = tabs.get(tabsIndex);
+				} else {
+					Log.e(LCAT, "Unable to get active tab, initialActiveTab index is larger than tabs array");
+				}
+			} else if (initialActiveTab instanceof TabProxy) {
+				activeTab = (TabProxy)initialActiveTab;
+			} else {
+				Log.e(LCAT, "Unable to get active tab, initialActiveTab is not recognized");
+			}
+		}
+
+		if (activeTab == null) {
+			String errorMessage = "Failed to get activeTab, make sure tabs are added first before calling getActiveTab()";
+			Log.e(LCAT, errorMessage);
+			throw new RuntimeException(errorMessage);
+		}
+		return activeTab;
+	}
+
 	@Override
 	protected void handleOpen(KrollDict options)
 	{
-		//TODO skip multiple opens?
-		Log.i(LCAT, "handleOpen");
-		
-		if (hasProperty("activeTab")) {
-			initialActiveTab = getProperty("activeTab");
+		if (DBG) {
+			Log.d(LCAT, "handleOpen: " + options);
+		}
+
+		if (hasProperty(TiC.PROPERTY_ACTIVE_TAB)) {
+			initialActiveTab = getProperty(TiC.PROPERTY_ACTIVE_TAB);
 		}
 
 		Activity activity = getTiContext().getActivity();
@@ -233,13 +275,19 @@ public class TabGroupProxy extends TiWindowProxy
 		tg.changeActiveTab(initialActiveTab);
 
 		opened = true;
+		fireEvent(TiC.EVENT_OPEN, null);
 	}
 
 	@Override
 	protected void handleClose(KrollDict options) {
-		Log.i(LCAT, "handleClose");
+		if (DBG) {
+			Log.d(LCAT, "handleClose: " + options);
+		}
+		
 		modelListener = null;
-		getTiContext().getActivity().finish();
+		if (this.weakActivity.get() != null) {
+			this.weakActivity.get().finish();
+		};
 		releaseViews();
 		windowId = null;
 		view = null;
@@ -251,22 +299,26 @@ public class TabGroupProxy extends TiWindowProxy
 	{
 		int toIndex = indexForId(to);
 		int fromIndex = indexForId(from);
+		return buildFocusEvent(toIndex, fromIndex);
+	}
 
+	public KrollDict buildFocusEvent(int toIndex, int fromIndex)
+	{
 		KrollDict e = new KrollDict();
 
-		e.put("index", toIndex);
-		e.put("previousIndex", fromIndex);
+		e.put(TiC.EVENT_PROPERTY_INDEX, toIndex);
+		e.put(TiC.EVENT_PROPERTY_PREVIOUS_INDEX, fromIndex);
 
 		if (fromIndex != -1) {
-			e.put("previousTab", tabs.get(fromIndex));
+			e.put(TiC.EVENT_PROPERTY_PREVIOUS_TAB, tabs.get(fromIndex));
 		} else {
 			KrollDict fakeTab = new KrollDict();
-			fakeTab.put("title", "no tab");
-			e.put("previousTab", fakeTab);
+			fakeTab.put(TiC.PROPERTY_TITLE, "no tab");
+			e.put(TiC.EVENT_PROPERTY_PREVIOUS_TAB, fakeTab);
 		}
 
 		if (toIndex != -1) {
-			e.put("tab", tabs.get(toIndex));
+			e.put(TiC.EVENT_PROPERTY_TAB, tabs.get(toIndex));
 		}
 
 		return e;
@@ -277,7 +329,7 @@ public class TabGroupProxy extends TiWindowProxy
 
 		int i = 0;
 		for(TabProxy t : tabs) {
-			String tag = (String) t.getProperty("tag");
+			String tag = (String) t.getProperty(TiC.PROPERTY_TAG);
 			if (tag.equals(id)) {
 				index = i;
 				break;
@@ -292,23 +344,28 @@ public class TabGroupProxy extends TiWindowProxy
 		KrollDict props = getProperties();
 
 		if (props != null) {
-			if (props.containsKey("fullscreen")) {
-				intent.putExtra("fullscreen", TiConvert.toBoolean(props, "fullscreen"));
+			if (props.containsKey(TiC.PROPERTY_FULLSCREEN)) {
+				intent.putExtra(TiC.PROPERTY_FULLSCREEN, TiConvert.toBoolean(props, TiC.PROPERTY_FULLSCREEN));
 			}
-			if (props.containsKey("navBarHidden")) {
-				intent.putExtra("navBarHidden", TiConvert.toBoolean(props, "navBarHidden"));
+			if (props.containsKey(TiC.PROPERTY_NAV_BAR_HIDDEN)) {
+				intent.putExtra(TiC.PROPERTY_NAV_BAR_HIDDEN, TiConvert.toBoolean(props, TiC.PROPERTY_NAV_BAR_HIDDEN));
 			}
 		}
-		intent.putExtra("finishRoot", activity.isTaskRoot());
+
+		if (props != null && props.containsKey(TiC.PROPERTY_EXIT_ON_CLOSE)) {
+			intent.putExtra(TiC.INTENT_PROPERTY_FINISH_ROOT, TiConvert.toBoolean(props, TiC.PROPERTY_EXIT_ON_CLOSE));
+		} else {
+			intent.putExtra(TiC.INTENT_PROPERTY_FINISH_ROOT, activity.isTaskRoot());
+		}
 		
 		Messenger messenger = new Messenger(getUIHandler());
-		intent.putExtra("messenger", messenger);
-		intent.putExtra("messageId", MSG_FINISH_OPEN);
+		intent.putExtra(TiC.INTENT_PROPERTY_MESSENGER, messenger);
+		intent.putExtra(TiC.INTENT_PROPERTY_MSG_ID, MSG_FINISH_OPEN);
 	}
 	
 	@Override
 	public KrollDict handleToImage() {
-		return TiUIHelper.viewToImage(getTiContext(), getTiContext().getActivity().getWindow().getDecorView());
+		return TiUIHelper.viewToImage(getTiContext(), this.properties, getTiContext().getActivity().getWindow().getDecorView());
 	}
 
 	@Override
@@ -326,5 +383,8 @@ public class TabGroupProxy extends TiWindowProxy
 		tabs.clear();
 	}
 
-	
+	@Override
+	protected Activity handleGetActivity() {
+		return weakActivity.get();
+	}
 }

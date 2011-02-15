@@ -12,6 +12,23 @@
 #define TI_BASE_H
 
 #define MEMORY_DEBUG 0
+#define VIEW_DEBUG 0
+
+#ifndef __IPHONE_3_2
+#define __IPHONE_3_2 30200
+#endif
+
+#ifndef __IPHONE_4_0
+#define __IPHONE_4_0 40000
+#endif
+
+#ifndef __IPHONE_4_1
+#define __IPHONE_4_1 40100
+#endif
+
+#ifndef __IPHONE_4_2
+#define __IPHONE_4_2 40200
+#endif
 
 #ifdef DEBUG
 	// Kroll memory debugging
@@ -378,19 +395,15 @@ extern NSString * const kTiWillShutdownNotification;
 extern NSString * const kTiShutdownNotification;
 extern NSString * const kTiSuspendNotification;
 extern NSString * const kTiResumeNotification;
+extern NSString * const kTiResumedNotification;
 extern NSString * const kTiAnalyticsNotification;
 extern NSString * const kTiRemoteDeviceUUIDNotification;
 extern NSString * const kTiGestureShakeNotification;
 extern NSString * const kTiRemoteControlNotification;
 
-#ifndef __IPHONE_3_2
-#define __IPHONE_3_2 30200
+#if __IPHONE_OS_VERSION_MAX_ALLOWED >= __IPHONE_4_0
+extern NSString * const kTiLocalNotification;
 #endif
-
-#ifndef __IPHONE_4_0
-#define __IPHONE_4_0 40000
-#endif
-
 
 #ifndef ASI_AUTOUPDATE_NETWORK_INDICATOR
 	#define ASI_AUTOUPDATE_NETWORK_INDICATOR 0

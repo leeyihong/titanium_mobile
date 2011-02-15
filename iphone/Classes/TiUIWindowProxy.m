@@ -45,7 +45,7 @@
 
 @implementation TiUIWindowProxyLatch
 
--(id)initWithWindow:(id)window_ args:(id)args_
+-(id)initWithTiWindow:(id)window_ args:(id)args_
 {
 	if (self = [super init])
 	{
@@ -178,8 +178,9 @@
 				[self _setBaseURL:url];
 				contextReady=NO;
 				context = [[KrollBridge alloc] initWithHost:[self _host]];
-				NSDictionary *preload = [NSDictionary dictionaryWithObjectsAndKeys:self,@"currentWindow",[self.tab tabGroup],@"currentTabGroup",self.tab,@"currentTab",nil];
-				latch = [[TiUIWindowProxyLatch alloc] initWithWindow:self args:args];
+				NSDictionary *values = [NSDictionary dictionaryWithObjectsAndKeys:self,@"currentWindow",[self.tab tabGroup],@"currentTabGroup",self.tab,@"currentTab",nil];
+				NSDictionary *preload = [NSDictionary dictionaryWithObjectsAndKeys:values,@"UI",nil];
+				latch = [[TiUIWindowProxyLatch alloc] initWithTiWindow:self args:args];
 				[context boot:latch url:url preload:preload];
 				if ([latch waitForBoot])
 				{
@@ -513,7 +514,7 @@
 {
 	UIView * newTitleView = nil;
 	
-	if (controller == nil || [controller navigationController] == nil) {
+	if (animating || controller == nil || [controller navigationController] == nil) {
 		return; // No need to update the title if not in a nav controller
 	}
 	
@@ -701,7 +702,30 @@ else{\
 	// we also must do it in tabFocus below so that it reverts when we push off the stack
 	SETPROP(@"barColor",setBarColor);
 	SETPROP(@"barImage",setBarImage);
+	[self updateTitleView];
 	[super viewDidAttach];
+}
+
+- (void)viewWillAppear:(BOOL)animated;    // Called when the view is about to made visible. Default does nothing
+{
+	animating = YES;
+}
+
+- (void)viewDidAppear:(BOOL)animated;     // Called when the view has been fully transitioned onto the screen. Default does nothing
+{
+	animating = NO;
+	[self updateTitleView];
+}
+
+- (void)viewWillDisappear:(BOOL)animated; // Called when the view is dismissed, covered or otherwise hidden. Default does nothing
+{
+	animating = YES;
+}
+
+- (void)viewDidDisappear:(BOOL)animated;  // Called after the view was dismissed, covered or otherwise hidden. Default does nothing
+{
+	animating = NO;
+	[self updateTitleView];
 }
 
 -(void)setupWindowDecorations
@@ -751,7 +775,7 @@ else{\
 
 -(void)_tabBeforeBlur
 {
-	[barImageView removeFromSuperview];
+//	[barImageView removeFromSuperview];
 	[super _tabBeforeBlur];
 }
 

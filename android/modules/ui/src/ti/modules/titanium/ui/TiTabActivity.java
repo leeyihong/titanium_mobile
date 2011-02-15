@@ -7,11 +7,13 @@
 package ti.modules.titanium.ui;
 
 import org.appcelerator.titanium.TiApplication;
+import org.appcelerator.titanium.TiC;
 import org.appcelerator.titanium.TiRootActivity;
 import org.appcelerator.titanium.util.Log;
 import org.appcelerator.titanium.util.TiConfig;
 import org.appcelerator.titanium.view.ITiWindowHandler;
 import org.appcelerator.titanium.view.TiCompositeLayout;
+import org.appcelerator.titanium.view.TiCompositeLayout.LayoutArrangement;
 import org.appcelerator.titanium.view.TiCompositeLayout.LayoutParams;
 
 import android.app.ActivityGroup;
@@ -54,25 +56,30 @@ public class TiTabActivity extends ActivityGroup
 		boolean navbar = false;
 		Messenger messenger = null;
 		Integer messageId = null;
-		boolean vertical = false;
+		String arrangementFromIntent =  "";
 
 		if (intent != null) {
-			if (intent.hasExtra("fullscreen")) {
-				fullscreen = intent.getBooleanExtra("fullscreen", fullscreen);
+			if (intent.hasExtra(TiC.PROPERTY_FULLSCREEN)) {
+				fullscreen = intent.getBooleanExtra(TiC.PROPERTY_FULLSCREEN, fullscreen);
 			}
-			if (intent.hasExtra("navBarHidden")) {
-				navbar = !intent.getBooleanExtra("navBarHidden", navbar);
+			if (intent.hasExtra(TiC.PROPERTY_NAV_BAR_HIDDEN)) {
+				navbar = !intent.getBooleanExtra(TiC.PROPERTY_NAV_BAR_HIDDEN, navbar);
 			}
-			if (intent.hasExtra("messenger")) {
-				messenger = (Messenger) intent.getParcelableExtra("messenger");
-				messageId = intent.getIntExtra("messageId", -1);
+			if (intent.hasExtra(TiC.INTENT_PROPERTY_MESSENGER)) {
+				messenger = (Messenger) intent.getParcelableExtra(TiC.INTENT_PROPERTY_MESSENGER);
+				messageId = intent.getIntExtra(TiC.INTENT_PROPERTY_MSG_ID, -1);
 			}
-			if (intent.hasExtra("vertical")) {
-				vertical = intent.getBooleanExtra("vertical", vertical);
+			if (intent.hasExtra(TiC.INTENT_PROPERTY_LAYOUT)) {
+				arrangementFromIntent = intent.getStringExtra(TiC.INTENT_PROPERTY_LAYOUT);
 			}
 		}
-
-		layout = new TiCompositeLayout(this, vertical);
+		LayoutArrangement arrangement = LayoutArrangement.DEFAULT;
+		if (arrangementFromIntent.equals(TiC.LAYOUT_HORIZONTAL)) {
+			arrangement = LayoutArrangement.HORIZONTAL;
+		} else if (arrangementFromIntent.equals(TiC.LAYOUT_VERTICAL)) {
+			arrangement = LayoutArrangement.VERTICAL;
+		}
+		layout = new TiCompositeLayout(this, arrangement);
 
 		if (fullscreen) {
 			getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
@@ -121,22 +128,25 @@ public class TiTabActivity extends ActivityGroup
 		
 	}
 
-	public TiApplication getTiApp() {
+	public TiApplication getTiApp()
+	{
 		return (TiApplication) getApplication();
 	}
 
-	public TiCompositeLayout getLayout() {
+	public TiCompositeLayout getLayout()
+	{
 		return layout;
 	}
 
-
 	@Override
-	public void addWindow(View v, LayoutParams params) {
+	public void addWindow(View v, LayoutParams params)
+	{
 		layout.addView(v, params);
 	}
 
 	@Override
-	public void removeWindow(View v) {
+	public void removeWindow(View v)
+	{
 		layout.removeView(v);
 	}
 
@@ -145,7 +155,7 @@ public class TiTabActivity extends ActivityGroup
 	{
 		Intent intent = getIntent();
 		if (intent != null) {
-			if (intent.getBooleanExtra("finishRoot", false)) {
+			if (intent.getBooleanExtra(TiC.INTENT_PROPERTY_FINISH_ROOT, false)) {
 				if (getApplication() != null) {
 					TiApplication tiApp = getTiApp();
 					if (tiApp != null) {
@@ -162,20 +172,20 @@ public class TiTabActivity extends ActivityGroup
 	}
 
 	@Override
-	protected void onPause() {
+	protected void onPause()
+	{
 		super.onPause();
 		getTiApp().setWindowHandler(null);
 		((TiApplication) getApplication()).setCurrentActivity(this, null);
 	}
 
 	@Override
-	protected void onResume() {
+	protected void onResume()
+	{
 		super.onResume();
 		getTiApp().setWindowHandler(this);
 		((TiApplication) getApplication()).setCurrentActivity(this, this);
 	}
-
-
 
 	@Override
 	protected void onDestroy()
@@ -192,5 +202,4 @@ public class TiTabActivity extends ActivityGroup
 		
 		handler = null;
 	}
-
 }
